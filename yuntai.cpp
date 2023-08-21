@@ -2710,9 +2710,9 @@ int Gimbal_Absolute_Angle_Control(unsigned char *Buffer,
 【返回值】None
 ********************************************************************************************************/
 /********************************************************************************************************
-【函数名】Gimbal_Absolute_Angle_Control
+【函数名】Gimbal_Absolute_Angle_Control_DEC
 【功  能】云台绝对角度控制
-【参  数】Buffer:存取返回报文
+【参  数】Buffer:存取返回报文;Course_Angle:设定航向角度;Roll_Angle:设定横滚角度;Pitch_Angle:设定俯仰角度;SpeedControl:设定转向速度
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -2722,31 +2722,9 @@ int Gimbal_Absolute_Angle_Control(unsigned char *Buffer,
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-typedef union {
-	unsigned char Byte[4];
-	int Int;
-} FloatToChar;
-
 int Gimbal_Absolute_Angle_Control_DEC(unsigned char *Buffer,
 				      float Course_Angle, float Roll_Angle, float Pitch_Angle, int SpeedControl)//云台绝对角度控制
 {
-	/* int Course = Course_Angle * 10;
-	int Roll = Roll_Angle * 10;
-	int Pitch = Pitch_Angle * 10;
-	unsigned char Course_Angle_data[2], Roll_Angle_data[2], Pitch_Angle_data[2];
-	int T1, T2, T3;
-	T1 = (int &)Course;
-	T2 = (int &)Roll;
-	T3 = (int &)Pitch;
-	Course_Angle_data[0] = (unsigned char)((T1 & 0x0000ff00) >> 8);
-	Course_Angle_data[1] = (unsigned char)((T1 & 0x000000ff));
-	Roll_Angle_data[0] = (unsigned char)((T2 & 0x0000ff00) >> 8);
-	Roll_Angle_data[1] = (unsigned char)((T2 & 0x000000ff));
-	Pitch_Angle_data[0] = (unsigned char)((T3 & 0x0000ff00) >> 8);
-	Pitch_Angle_data[1] = (unsigned char)((T3 & 0x000000ff));
-	return Gimbal_Absolute_Angle_Control(Buffer, Course_Angle_data[0], Course_Angle_data[1], Roll_Angle_data[0],
-					     Roll_Angle_data[1], Pitch_Angle_data[0], Pitch_Angle_data[1], SpeedControl);
-	*/
 	FloatToChar Course, Roll, Pitch;
 	Course.Int = Course_Angle * 10;
 	Roll.Int = Roll_Angle * 10;
@@ -2754,13 +2732,33 @@ int Gimbal_Absolute_Angle_Control_DEC(unsigned char *Buffer,
 	return Gimbal_Absolute_Angle_Control(Buffer, Course.Byte[1], Course.Byte[0], Roll.Byte[1], Roll.Byte[0], Pitch.Byte[1],
 					     Pitch.Byte[0], SpeedControl);
 }
+/********************************************************************************************************
+【函数名】Gimbal_Analog_Joystick_Operation_DEC
+【功  能】云台绝对角度控制
+【参  数】Buffer:存取返回报文;Course_Angle:设定航向速度;Pitch_Angle:设定俯仰速度
+【返回值】0：写入成功并获得正确返回报文
+       -1：写入失败
+       -2：没有0xaa头字节
+       -3：没有接收到正确的命令
+       -4：输入参数不等于计算总字节数
+       -5：校验出来的结果与校验位不相等，校验错误
+       -6：应答超时，没有数据
+       -7：设置等待时间失败
+********************************************************************************************************/
+int Gimbal_Analog_Joystick_Operation_DEC(unsigned char *Buffer, int Course_Speed, int Pitch_Speed)
+{
+	FloatToChar Course, Pitch;
+	Course.Int = Course_Speed;
+	Pitch.Int = Pitch_Speed;
+	return Gimbal_Analog_Joystick_Operation(Buffer, Course.Byte[1], Course.Byte[0], Pitch.Byte[1], Pitch.Byte[0]);
+}
 int uart_main(int argc, char *argv[])
 {
 	uint8_t Buffer[256];
 	printf("id:%d\n",  pthread_self());
+	Gimbal_Analog_Joystick_Operation_DEC(Buffer, 10, 0);
 
-	//Gimbal_Absolute_Angle_Control(Buffer, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
-	switch (Gimbal_Absolute_Angle_Control_DEC(Buffer, 0, 0, 90.0, 0)) {
+	switch (Gimbal_Absolute_Angle_Control_DEC(Buffer, 0, 40, 90, 0)) {
 	case 0: {
 			PX4_INFO("成功写入数据并获得正确应答消息\n");
 

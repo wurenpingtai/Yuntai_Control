@@ -63,6 +63,11 @@ using 	namespace 	time_literals;
 #define CheckBits	'N'
 #define ReadLen		MAX_NUM//阻塞方式读取字节最大长度
 #define ReadTimeOut	10//1s=10*100ms
+
+typedef union {
+	unsigned char Byte[4];
+	int Int;
+} FloatToChar;
 class UART
 {
 public:
@@ -125,3 +130,10 @@ int Gimbal_Absolute_Angle_Control(unsigned char *Buffer,
 				  unsigned char Roll_MSB, unsigned char Roll_LSB,
 				  unsigned char Pitch_MSB, unsigned char Pitch_LSB,
 				  unsigned char Speed_Control); //云台绝对角度控制
+int Gimbal_Analog_Joystick_Operation_DEC(unsigned char *Buffer, int Course_Speed,
+		int Pitch_Speed);//云台模拟摇杆控制-直接输入十进制无需转换
+int Gimbal_Absolute_Angle_Control_DEC(unsigned char *Buffer,
+				      float Course_Angle, float Roll_Angle, float Pitch_Angle,
+				      int SpeedControl);//绝对角度控制-直接输入十进制无需转换
+
+
