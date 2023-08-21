@@ -1,0 +1,5 @@
+menuconfig MODULES_YUNTAI
+	bool "yuntai"
+	default n
+	---help---
+		Enable support for yuntai
