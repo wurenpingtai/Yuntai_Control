@@ -1,36 +1,3 @@
-/****************************************************************************
- *
- *   Copyright (c) 2021 PX4 Development Team. All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in
- *    the documentation and/or other materials provided with the
- *    distribution.
- * 3. Neither the name PX4 nor the names of its contributors may be
- *    used to endorse or promote products derived from this software
- *    without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
- * FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
- * COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
- * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
- * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS
- * OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
- * AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
- * ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
- *
- ****************************************************************************/
-
 #include "yuntai.hpp"
 /********************************************************************************************************
 【函数名】getBaudrate
@@ -136,10 +103,17 @@ UART::UART(const char *devFile)
 		exit(1);
 	}
 }
+/********************************************************************************************************
+【函数名】~UART
+【功  能】UART的析构函数，释放发送和接收数组空间，关闭串口空间
+【参  数】None
+【返回值】None
+********************************************************************************************************/
 UART::~UART()
 {
 	free(TX_Buffer);
 	free(RX_Buffer);
+	mflush();
 	close(mFd);
 }
 /********************************************************************************************************
@@ -225,6 +199,12 @@ int UART::cfg(int inSpeed, int inBits, int inEvent, int inStop, int inReadLen, i
 	printf("Set uart done\n");
 	return 0;
 }
+/********************************************************************************************************
+【函数名】mflush
+【功  能】清空输入输出缓存空间
+【参  数】None
+【返回值】无
+********************************************************************************************************/
 int UART::mflush(void)
 {
 	return tcflush(mFd, TCIOFLUSH);
@@ -236,13 +216,13 @@ int UART::mflush(void)
          inLen	：数据缓冲区长度
 【返回值】返回0表示写入成功；否则表示写入失败
 ********************************************************************************************************/
-int UART::mwrite(uint8_t *pcnBuf, int inLen)
+int UART::mwrite(unsigned char *pcnBuf, int inLen)
 {
 	int i = 0;
 	uint32_t tx_len = 0;
 
 	if ((pcnBuf == NULL) || (inLen == 0)) {
-		return ERROR;
+		return -1;
 	}
 
 	for (; i < inLen; i += tx_len) {
@@ -253,9 +233,8 @@ int UART::mwrite(uint8_t *pcnBuf, int inLen)
 		}
 	}
 
-	return OK;
+	return 0;
 }
-
 /********************************************************************************************************
 【函数名】UART::read
 【功  能】往串口设备读取数据
@@ -263,9 +242,9 @@ int UART::mwrite(uint8_t *pcnBuf, int inLen)
          inLen  ：命令帧的长度
 【返回值】返回0表示读取成功；否则读取失败
 ********************************************************************************************************/
-int UART::mread(uint8_t *pcnBuf, int inLen)
+int UART::mread(unsigned char *pcnBuf, int inLen)
 {
-	uint8_t data;
+	unsigned char data;
 	PX4_INFO("Reading data from SerialPort \n");
 	PX4_INFO("pcnBuf:");
 	memset(pcnBuf, 0, inLen);
@@ -280,7 +259,6 @@ int UART::mread(uint8_t *pcnBuf, int inLen)
 		return -1;
 	}
 }
-
 /********************************************************************************************************
 【函数名】UART::mselect
 【功  能】以select机制等待数据
@@ -327,9 +305,9 @@ unsigned char UART::CRC(void)
 	return crc;
 }
 /********************************************************************************************************
-【函数名】Get_Version
-【功  能】获取云台版本信息
-【参  数】Buffer:存取返回报文
+【函数名】Get_Camera_Version
+【功  能】获取相机版本号
+【参  数】Buffer
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -339,74 +317,72 @@ unsigned char UART::CRC(void)
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Get_Camera_Version(uint8_t *Buffer)
+int UART::Get_Camera_Version(unsigned char *Buffer)
 {
-	UART *mCom = new UART(SerialPort4);
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa; //帧头
-	mCom->TX_Buffer[1] = 0x05; //总字节数
-	mCom->TX_Buffer[2] = 0x00; //命令字
-	mCom->TX_Buffer[3] = 0x01; //执行命令参数
-	mCom->TX_Buffer[4] = mCom->CRC(); //校验码
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, MAX_NUM, ReadTimeOut);
+	memset(TX_Buffer, 0, sizeof(TX_Buffer));//发送数组设置为0
+	TX_Buffer[0] = 0xaa; //帧头
+	TX_Buffer[1] = 0x05; //总字节数
+	TX_Buffer[2] = 0x00; //命令字
+	TX_Buffer[3] = 0x01; //执行命令参数
+	TX_Buffer[4] = CRC();
 
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
-		return -1;        //向云台发送获取相机版本失败
+	if (-1 == mwrite(TX_Buffer, TX_Buffer[1])) {
+		return -1;//发送失败
 
 	} else {
-		int retval = mCom->mselect(1000);//阻塞模式等待1s
+		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
-			//则表示有消息返回
-			retval = mCom->mread(mCom->RX_Buffer, MAX_NUM);
+			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
-			if (0 == retval) {
-				int length = mCom->RX_Buffer[1];
+			if (0 == retval) { //读取成功
 				PX4_INFO("ReceiveBuffer:");
 
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
-
+				for (int i = 0; i < RX_Buffer[1]; i++) {
+					printf(" 0x%02x ", RX_Buffer[i]);
 				}
 
-				if (0x00 == mCom->RX_Buffer[3]) {
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
+				if (0x00 == RX_Buffer[3]) {
+					for (int i = 0; i < RX_Buffer[1]; i++) {
+						Buffer[i] = RX_Buffer[i];
 					}
 
-					mCom->~UART();
-					return OK;
+					return 0;
 
-				} else if (0x01 == mCom->RX_Buffer[3]) {
+				} else if (0x01 == RX_Buffer[3]) {
 					return -2;
 
-				} else if (0x02 == mCom->RX_Buffer[3]) {
+				} else if (0x02 == RX_Buffer[3]) {
 					return -3;
 
-				} else if (0x03 == mCom->RX_Buffer[3]) {
+				} else if (0x03 == RX_Buffer[3]) {
 					return -4;
 
-				} else if (0x04 == mCom->RX_Buffer[3]) {
+				} else if (0x04 == RX_Buffer[3]) {
 					return -5;
 				}
 
 				PX4_INFO("\n");
+
 			}
 
-		} else if (0 == retval) { //等待应答超时则表明没有数据传输
+		} else if (0 == retval) {
+			PX4_INFO("Answer timeout.No data");
 			return -6;
 
 		} else if (-1 == retval) {
-			return -7;//执行select等待数据设置失败
+			PX4_INFO("Failed to set time of mselect");
+			return -7;
 		}
+
 	}
 
 	return NULL;
 }
 /********************************************************************************************************
-【函数名】Get_Device_Protocol_Version_Number
-【功  能】获取设备信息-获取协议版本号
-【参  数】Buffer:存取返回报文
+【函数名】Get_Protocol_Version
+【功  能】获取协议版本号
+【参  数】Buffer
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -416,71 +392,72 @@ int Get_Camera_Version(uint8_t *Buffer)
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Get_Device_Protocol_Version_Number(unsigned char *Buffer)
+int UART::Get_Protocol_Version(unsigned char *Buffer)
 {
-	UART *mCom = new UART(SerialPort4);
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa; //帧头
-	mCom->TX_Buffer[1] = 0x05; //总字节数
-	mCom->TX_Buffer[2] = 0x00; //命令字
-	mCom->TX_Buffer[3] = 0x02; //执行命令参数
-	mCom->TX_Buffer[4] = mCom->CRC();
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, ReadLen, ReadTimeOut);
+	memset(TX_Buffer, 0, sizeof(TX_Buffer));//发送数组设置为0
+	TX_Buffer[0] = 0xaa; //帧头
+	TX_Buffer[1] = 0x05; //总字节数
+	TX_Buffer[2] = 0x00; //命令字
+	TX_Buffer[3] = 0x02; //执行命令参数
+	TX_Buffer[4] = CRC();
 
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
+	if (-1 == mwrite(TX_Buffer, TX_Buffer[1])) {
 		return -1;//发送失败
 
 	} else {
-		int retval = mCom->mselect(1000); //阻塞等待1s
+		int retval = mselect(SelectTime);//设置阻塞时间
 
-		if (retval > 0) { //retval大于0则表明有应答消息
-			retval = mCom->mwrite(mCom->RX_Buffer, MAX_NUM);
+		if (retval > 0) {
+			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
-			if (retval == 0) {//retval等于0则表明数据读取成功
-				int length = mCom->RX_Buffer[1];//接收数据中有效的云台消息帧
+			if (0 == retval) { //读取成功
 				PX4_INFO("ReceiveBuffer:");
 
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
+				for (int i = 0; i < RX_Buffer[1]; i++) {
+					printf(" 0x%02x ", RX_Buffer[i]);
 				}
 
-				if (0x00 == mCom->RX_Buffer[3]) { //应答消息正确
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
+				if (0x00 == RX_Buffer[3]) {
+					for (int i = 0; i < RX_Buffer[1]; i++) {
+						Buffer[i] = RX_Buffer[i];
 					}
 
-					mCom->~UART();
 					return 0;
 
-				} else if (0x01 == mCom->RX_Buffer[3]) {
+				} else if (0x01 == RX_Buffer[3]) {
 					return -2;
 
-				} else if (0x02 == mCom->RX_Buffer[3]) {
+				} else if (0x02 == RX_Buffer[3]) {
 					return -3;
 
-				} else if (0x03 == mCom->RX_Buffer[3]) {
+				} else if (0x03 == RX_Buffer[3]) {
 					return -4;
 
-				} else if (0x04 == mCom->RX_Buffer[3]) {
+				} else if (0x04 == RX_Buffer[3]) {
 					return -5;
 				}
 
+				PX4_INFO("\n");
+
 			}
 
-		} else if (0 == retval) { //等待应答消息超时则表明没有数据传输
+		} else if (0 == retval) {
+			PX4_INFO("Answer timeout.No data");
 			return -6;
 
-		} else if (-1 == retval) { //执行selece阻塞等待时间设置失败
+		} else if (-1 == retval) {
+			PX4_INFO("Failed to set time of mselect");
 			return -7;
 		}
+
 	}
 
 	return NULL;
 }
 /********************************************************************************************************
 【函数名】Get_Current_Camera_Working_Mode
-【功  能】获取设备信息-获取当前相机工作模式
-【参  数】Buffer:存取返回报文
+【功  能】获取当前相机工作模式
+【参  数】Buffer
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -490,67 +467,61 @@ int Get_Device_Protocol_Version_Number(unsigned char *Buffer)
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Get_Current_Camera_Working_Mode(unsigned char *Buffer)
+int UART::Get_Current_Camera_Working_Mode(unsigned char *Buffer)
 {
-	//创建UART串口类
-	UART *mCom = new UART(SerialPort4);
-	//初始化发送数组
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa; //帧头
-	mCom->TX_Buffer[1] = 0x05; //总字节数
-	mCom->TX_Buffer[2] = 0x00; //命令字
-	mCom->TX_Buffer[3] = 0x03; //执行命令参数
-	mCom->TX_Buffer[4] = mCom->CRC(); //校验码
-	//配置串口
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, ReadLen, ReadTimeOut);
+	memset(TX_Buffer, 0, sizeof(TX_Buffer));//发送数组设置为0
+	TX_Buffer[0] = 0xaa; //帧头
+	TX_Buffer[1] = 0x05; //总字节数
+	TX_Buffer[2] = 0x00; //命令字
+	TX_Buffer[3] = 0x03; //执行命令参数
+	TX_Buffer[4] = CRC();
 
-	//判断是否写入成功
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
-		return -1;//函数执行完若返回-1则表明写入失败
+	if (-1 == mwrite(TX_Buffer, TX_Buffer[1])) {
+		return -1;//发送失败
 
 	} else {
-		int retval = mCom->mselect(1000); //阻塞等待1s读取
+		int retval = mselect(SelectTime);//设置阻塞时间
 
-		if (retval > 0) { //retval大于0则表明有数据可读
-			retval = mCom->mread(mCom->RX_Buffer, MAX_NUM);//读取数据
+		if (retval > 0) {
+			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
-			//数据读取成功
-			if (0 == retval) {
-				int length = mCom->RX_Buffer[1]; //应答消息中有效云台数据帧
+			if (0 == retval) { //读取成功
 				PX4_INFO("ReceiveBuffer:");
 
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
+				for (int i = 0; i < RX_Buffer[1]; i++) {
+					printf(" 0x%02x ", RX_Buffer[i]);
 				}
 
-				if (0x00 == mCom->RX_Buffer[3]) {
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
+				if (0x00 == RX_Buffer[3]) {
+					for (int i = 0; i < RX_Buffer[1]; i++) {
+						Buffer[i] = RX_Buffer[i];
 					}
 
-					mCom->~UART();//mCom释放
 					return 0;
 
-				} else if (0x01 == mCom->RX_Buffer[3]) {
+				} else if (0x01 == RX_Buffer[3]) {
 					return -2;
 
-				} else if (0x02 == mCom->RX_Buffer[3]) {
+				} else if (0x02 == RX_Buffer[3]) {
 					return -3;
 
-				} else if (0x03 == mCom->RX_Buffer[3]) {
+				} else if (0x03 == RX_Buffer[3]) {
 					return -4;
 
-				} else if (0x04 == mCom->RX_Buffer[3]) {
+				} else if (0x04 == RX_Buffer[3]) {
 					return -5;
 				}
 
 				PX4_INFO("\n");
+
 			}
 
-		} else if (0 == retval) { //无应答消息
+		} else if (0 == retval) {
+			PX4_INFO("Answer timeout.No data");
 			return -6;
 
-		} else if (-1 == retval) { //设置阻塞时间失败
+		} else if (-1 == retval) {
+			PX4_INFO("Failed to set time of mselect");
 			return -7;
 		}
 
@@ -560,8 +531,8 @@ int Get_Current_Camera_Working_Mode(unsigned char *Buffer)
 }
 /********************************************************************************************************
 【函数名】Get_Camera_Battery_Level
-【功  能】获取设备信息-获取相机电量
-【参  数】Buffer:存取返回报文
+【功  能】获取相机电量
+【参  数】Buffer
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -571,52 +542,48 @@ int Get_Current_Camera_Working_Mode(unsigned char *Buffer)
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Get_Camera_Battery_Level(unsigned char *Buffer)
+int UART::Get_Camera_Battery_Level(unsigned char *Buffer)
 {
-	UART *mCom = new UART(SerialPort4); //创建UART对象
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa;
-	mCom->TX_Buffer[1] = 0x05;
-	mCom->TX_Buffer[2] = 0x00;
-	mCom->TX_Buffer[3] = 0x04;
-	mCom->TX_Buffer[4] = mCom->CRC();
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, ReadLen, ReadTimeOut);
+	memset(TX_Buffer, 0, sizeof(TX_Buffer));//发送数组设置为0
+	TX_Buffer[0] = 0xaa; //帧头
+	TX_Buffer[1] = 0x05; //总字节数
+	TX_Buffer[2] = 0x00; //命令字
+	TX_Buffer[3] = 0x04; //执行命令参数
+	TX_Buffer[4] = CRC();
 
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
-		return -1;//写入失败
+	if (-1 == mwrite(TX_Buffer, TX_Buffer[1])) {
+		return -1;//发送失败
 
 	} else {
-		int retval = mCom->mselect(1000); //阻塞模式等待1s
+		int retval = mselect(SelectTime);//设置阻塞时间
 
-		if (retval > 0) { //有数据可读
-			retval = mCom->mread(mCom->RX_Buffer, MAX_NUM); //读取数据
+		if (retval > 0) {
+			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
-				int length = mCom->RX_Buffer[1];
 				PX4_INFO("ReceiveBuffer:");
 
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
+				for (int i = 0; i < RX_Buffer[1]; i++) {
+					printf(" 0x%02x ", RX_Buffer[i]);
 				}
 
-				if (0x00 == mCom->RX_Buffer[3]) {
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
+				if (0x00 == RX_Buffer[3]) {
+					for (int i = 0; i < RX_Buffer[1]; i++) {
+						Buffer[i] = RX_Buffer[i];
 					}
 
-					mCom->~UART();
 					return 0;
 
-				} else if (0x01 == mCom->RX_Buffer[3]) {
+				} else if (0x01 == RX_Buffer[3]) {
 					return -2;
 
-				} else if (0x02 == mCom->RX_Buffer[3]) {
+				} else if (0x02 == RX_Buffer[3]) {
 					return -3;
 
-				} else if (0x03 == mCom->RX_Buffer[3]) {
+				} else if (0x03 == RX_Buffer[3]) {
 					return -4;
 
-				} else if (0x04 == mCom->RX_Buffer[3]) {
+				} else if (0x04 == RX_Buffer[3]) {
 					return -5;
 				}
 
@@ -624,21 +591,23 @@ int Get_Camera_Battery_Level(unsigned char *Buffer)
 
 			}
 
-		} else if (0 == retval) { //应答超时
+		} else if (0 == retval) {
+			PX4_INFO("Answer timeout.No data");
 			return -6;
 
 		} else if (-1 == retval) {
-			//设置阻塞模式失败
+			PX4_INFO("Failed to set time of mselect");
 			return -7;
 		}
+
 	}
 
 	return NULL;
 }
 /********************************************************************************************************
-【函数名】Get_Gimbal_Working_Mode
-【功  能】获取设备信息-云台工作模式
-【参  数】Buffer:存取返回报文
+【函数名】Gimbal_Working_Mode
+【功  能】获取云台工作模式
+【参  数】Buffer
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -648,74 +617,73 @@ int Get_Camera_Battery_Level(unsigned char *Buffer)
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Get_Gimbal_Working_Mode(unsigned char *Buffer)
+int UART::Gimbal_Working_Mode(unsigned char *Buffer)
 {
-	UART *mCom = new UART(SerialPort4);
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa;
-	mCom->TX_Buffer[1] = 0x06;
-	mCom->TX_Buffer[2] = 0x00;
-	mCom->TX_Buffer[3] = 0x05;
-	mCom->TX_Buffer[4] = 0x01;
-	mCom->TX_Buffer[5] = mCom->CRC();
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, ReadLen, ReadTimeOut);
+	memset(TX_Buffer, 0, sizeof(TX_Buffer));//发送数组设置为0
+	TX_Buffer[0] = 0xaa; //帧头
+	TX_Buffer[1] = 0x06; //总字节数
+	TX_Buffer[2] = 0x00; //命令字
+	TX_Buffer[3] = 0x05; //执行命令参数
+	TX_Buffer[4] = 0x01;
+	TX_Buffer[5] = CRC();
 
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
-		return -1;//写入失败
+	if (-1 == mwrite(TX_Buffer, TX_Buffer[1])) {
+		return -1;//发送失败
 
 	} else {
-		int retval = mCom->mselect(1000); //阻塞等待1s
+		int retval = mselect(SelectTime);//设置阻塞时间
 
-		if (retval > 0) { //有数据可读
-			retval = mCom->mread(mCom->RX_Buffer, MAX_NUM);
+		if (retval > 0) {
+			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
-				int length = mCom->RX_Buffer[1];
 				PX4_INFO("ReceiveBuffer:");
 
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
+				for (int i = 0; i < RX_Buffer[1]; i++) {
+					printf(" 0x%02x ", RX_Buffer[i]);
 				}
 
-				if (0x00 == mCom->RX_Buffer[3]) {
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
+				if (0x00 == RX_Buffer[3]) {
+					for (int i = 0; i < RX_Buffer[1]; i++) {
+						Buffer[i] = RX_Buffer[i];
 					}
 
-					mCom->~UART();//delete mCom
 					return 0;
-				}
 
-				else if (0x01 == mCom->RX_Buffer[3]) {
+				} else if (0x01 == RX_Buffer[3]) {
 					return -2;
 
-				} else if (0x02 == mCom->RX_Buffer[3]) {
+				} else if (0x02 == RX_Buffer[3]) {
 					return -3;
 
-				} else if (0x03 == mCom->RX_Buffer[3]) {
+				} else if (0x03 == RX_Buffer[3]) {
 					return -4;
 
-				} else if (0x04 == mCom->RX_Buffer[3]) {
+				} else if (0x04 == RX_Buffer[3]) {
 					return -5;
 				}
 
 				PX4_INFO("\n");
+
 			}
 
-		} else if (0 == retval) { //应答超时
+		} else if (0 == retval) {
+			PX4_INFO("Answer timeout.No data");
 			return -6;
 
-		} else if (-1 == retval) { //设置阻塞时间失败
+		} else if (-1 == retval) {
+			PX4_INFO("Failed to set time of mselect");
 			return -7;
 		}
+
 	}
 
 	return NULL;
 }
 /********************************************************************************************************
 【函数名】Get_Genting_Posture_Information
-【功  能】获取设备信息-云台姿态信息(航向、横滚、俯仰)
-【参  数】Buffer:存取返回报文
+【功  能】获取云台姿态信息
+【参  数】Buffer
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -725,73 +693,73 @@ int Get_Gimbal_Working_Mode(unsigned char *Buffer)
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Get_Genting_Posture_Information(unsigned char *Buffer)
+int UART::Get_Genting_Posture_Information(unsigned char *Buffer)
 {
-	UART *mCom = new UART(SerialPort4);
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa;
-	mCom->TX_Buffer[1] = 0x06;
-	mCom->TX_Buffer[2] = 0x00;
-	mCom->TX_Buffer[3] = 0x05;
-	mCom->TX_Buffer[4] = 0x02;
-	mCom->TX_Buffer[5] = mCom->CRC();
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, ReadLen, ReadTimeOut);
+	memset(TX_Buffer, 0, sizeof(TX_Buffer));//发送数组设置为0
+	TX_Buffer[0] = 0xaa; //帧头
+	TX_Buffer[1] = 0x06; //总字节数
+	TX_Buffer[2] = 0x00; //命令字
+	TX_Buffer[3] = 0x05; //执行命令参数
+	TX_Buffer[4] = 0x02;
+	TX_Buffer[5] = CRC();
 
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
-		return -1;
+	if (-1 == mwrite(TX_Buffer, TX_Buffer[1])) {
+		return -1;//发送失败
 
 	} else {
-		int retval = mCom->mselect(1000);
+		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
-			retval = mCom->mread(mCom->RX_Buffer, MAX_NUM);
+			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
-			if (0 == retval) {
-				int length = mCom->RX_Buffer[1];
+			if (0 == retval) { //读取成功
 				PX4_INFO("ReceiveBuffer:");
 
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
+				for (int i = 0; i < RX_Buffer[1]; i++) {
+					printf(" 0x%02x ", RX_Buffer[i]);
 				}
 
-				if (0x00 == mCom->RX_Buffer[3]) {
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
+				if (0x00 == RX_Buffer[3]) {
+					for (int i = 0; i < RX_Buffer[1]; i++) {
+						Buffer[i] = RX_Buffer[i];
 					}
 
-					mCom->~UART();
 					return 0;
 
-				} else if (0x01 == mCom->RX_Buffer[3]) {
+				} else if (0x01 == RX_Buffer[3]) {
 					return -2;
 
-				} else if (0x02 == mCom->RX_Buffer[3]) {
+				} else if (0x02 == RX_Buffer[3]) {
 					return -3;
 
-				} else if (0x03 == mCom->RX_Buffer[3]) {
+				} else if (0x03 == RX_Buffer[3]) {
 					return -4;
 
-				} else if (0x04 == mCom->RX_Buffer[3]) {
+				} else if (0x04 == RX_Buffer[3]) {
 					return -5;
 				}
 
 				PX4_INFO("\n");
+
 			}
 
 		} else if (0 == retval) {
+			PX4_INFO("Answer timeout.No data");
 			return -6;
 
 		} else if (-1 == retval) {
+			PX4_INFO("Failed to set time of mselect");
 			return -7;
 		}
+
 	}
 
 	return NULL;
 }
 /********************************************************************************************************
 【函数名】Get_SD_information
-【功  能】获取设备信息-获取SD卡信息(剩余容量)
-【参  数】Buffer:存取返回报文
+【功  能】获取SD卡信息
+【参  数】Buffer
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -801,72 +769,72 @@ int Get_Genting_Posture_Information(unsigned char *Buffer)
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Get_SD_information(unsigned char *Buffer)
+int UART::Get_SD_information(unsigned char *Buffer)
 {
-	UART *mCom = new UART(SerialPort4);
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa;
-	mCom->TX_Buffer[1] = 0x05;
-	mCom->TX_Buffer[2] = 0x00;
-	mCom->TX_Buffer[3] = 0x06;
-	mCom->TX_Buffer[4] = mCom->CRC();
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, ReadLen, ReadTimeOut);
+	memset(TX_Buffer, 0, sizeof(TX_Buffer));//发送数组设置为0
+	TX_Buffer[0] = 0xaa; //帧头
+	TX_Buffer[1] = 0x05; //总字节数
+	TX_Buffer[2] = 0x00; //命令字
+	TX_Buffer[3] = 0x06; //执行命令参数
+	TX_Buffer[4] = CRC();
 
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
-		return -1;
+	if (-1 == mwrite(TX_Buffer, TX_Buffer[1])) {
+		return -1;//发送失败
 
 	} else {
-		int retval = mCom->mselect(1000);
+		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
-			retval = mCom->mread(mCom->RX_Buffer, MAX_NUM);
+			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
-			if (0 == retval) {
-				int length = mCom->RX_Buffer[1];
+			if (0 == retval) { //读取成功
 				PX4_INFO("ReceiveBuffer:");
 
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
+				for (int i = 0; i < RX_Buffer[1]; i++) {
+					printf(" 0x%02x ", RX_Buffer[i]);
 				}
 
-				if (0x00 == mCom->RX_Buffer[3]) {
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
+				if (0x00 == RX_Buffer[3]) {
+					for (int i = 0; i < RX_Buffer[1]; i++) {
+						Buffer[i] = RX_Buffer[i];
 					}
 
-					mCom->~UART();
 					return 0;
 
-				} else if (0x01 == mCom->RX_Buffer[3]) {
+				} else if (0x01 == RX_Buffer[3]) {
 					return -2;
 
-				} else if (0x02 == mCom->RX_Buffer[3]) {
+				} else if (0x02 == RX_Buffer[3]) {
 					return -3;
 
-				} else if (0x03 == mCom->RX_Buffer[3]) {
+				} else if (0x03 == RX_Buffer[3]) {
 					return -4;
 
-				} else if (0x04 == mCom->RX_Buffer[3]) {
+				} else if (0x04 == RX_Buffer[3]) {
 					return -5;
 				}
 
 				PX4_INFO("\n");
+
 			}
 
 		} else if (0 == retval) {
+			PX4_INFO("Answer timeout.No data");
 			return -6;
 
 		} else if (-1 == retval) {
+			PX4_INFO("Failed to set time of mselect");
 			return -7;
 		}
+
 	}
 
 	return NULL;
 }
 /********************************************************************************************************
 【函数名】Get_Camera_Time
-【功  能】获取设备信息-获取相机时间
-【参  数】Buffer:存取返回报文
+【功  能】获取相机时间
+【参  数】Buffer
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -876,76 +844,73 @@ int Get_SD_information(unsigned char *Buffer)
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Get_Camera_Time(unsigned char *Buffer)
+int UART::Get_Camera_Time(unsigned char *Buffer)
 {
-	UART *mCom = new UART(SerialPort4);
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa;
-	mCom->TX_Buffer[1] = 0x06;
-	mCom->TX_Buffer[2] = 0x00;
-	mCom->TX_Buffer[3] = 0x07;
-	mCom->TX_Buffer[4] = 0x01;
-	mCom->TX_Buffer[5] = mCom->CRC();
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, ReadLen, ReadTimeOut);
+	memset(TX_Buffer, 0, sizeof(TX_Buffer));//发送数组设置为0
+	TX_Buffer[0] = 0xaa; //帧头
+	TX_Buffer[1] = 0x06; //总字节数
+	TX_Buffer[2] = 0x00; //命令字
+	TX_Buffer[3] = 0x07; //执行命令参数
+	TX_Buffer[4] = 0x01;
+	TX_Buffer[5] = CRC();
 
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
-		return -1;
+	if (-1 == mwrite(TX_Buffer, TX_Buffer[1])) {
+		return -1;//发送失败
 
 	} else {
-		int retval = mCom->mselect(1000);
+		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
-			retval = mCom->mread(mCom->RX_Buffer, MAX_NUM);
+			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
-			if (0 == retval) {
-				int length = mCom->RX_Buffer[1];
+			if (0 == retval) { //读取成功
 				PX4_INFO("ReceiveBuffer:");
 
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
+				for (int i = 0; i < RX_Buffer[1]; i++) {
+					printf(" 0x%02x ", RX_Buffer[i]);
 				}
 
-				if (0x00 == mCom->RX_Buffer[3]) {
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
+				if (0x00 == RX_Buffer[3]) {
+					for (int i = 0; i < RX_Buffer[1]; i++) {
+						Buffer[i] = RX_Buffer[i];
 					}
 
-					mCom->~UART();
 					return 0;
 
-				} else if (0x01 == mCom->RX_Buffer[3]) {
+				} else if (0x01 == RX_Buffer[3]) {
 					return -2;
 
-				} else if (0x02 == mCom->RX_Buffer[3]) {
+				} else if (0x02 == RX_Buffer[3]) {
 					return -3;
 
-				} else if (0x03 == mCom->RX_Buffer[3]) {
+				} else if (0x03 == RX_Buffer[3]) {
 					return -4;
 
-				} else if (0x04 == mCom->RX_Buffer[3]) {
+				} else if (0x04 == RX_Buffer[3]) {
 					return -5;
 				}
 
 				PX4_INFO("\n");
+
 			}
 
 		} else if (0 == retval) {
+			PX4_INFO("Answer timeout.No data");
 			return -6;
 
 		} else if (-1 == retval) {
+			PX4_INFO("Failed to set time of mselect");
 			return -7;
 		}
+
 	}
 
 	return NULL;
 }
 /********************************************************************************************************
-【函数名】Set_Camera_Time
-【功  能】获取设备信息-设置相机时间
-【参  数】Buffer:存取返回报文;Data1~Data14为设置时间的ASCII码
-	如设置相机时间为2020-04-30 16:00:00
-	则其ASCII码为：32 30 32 30 30 34 33 30 31 36 30 30 30 30
-	将其依次赋予Data1~Data14
+【函数名】Get_Camera_Time
+【功  能】获取相机当前倍率
+【参  数】Buffer
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -955,164 +920,73 @@ int Get_Camera_Time(unsigned char *Buffer)
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Set_Camera_Time(unsigned char *Buffer, unsigned char Data1, unsigned char Data2, unsigned char Data3,
-		    unsigned char Data4, unsigned char Data5, unsigned char Data6, unsigned char Data7,
-		    unsigned char Data8, unsigned char Data9, unsigned char Data10, unsigned char Data11,
-		    unsigned char Data12, unsigned char Data13, unsigned char Data14)
+int UART::Get_Current_Camera_Magnification(unsigned char *Buffer)
 {
-	UART *mCom = new UART(SerialPort4);
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa;
-	mCom->TX_Buffer[1] = 0x14; //20
-	mCom->TX_Buffer[2] = 0x00;
-	mCom->TX_Buffer[3] = 0x07;
-	mCom->TX_Buffer[4] = 0x02;
-	mCom->TX_Buffer[5] = Data1;
-	mCom->TX_Buffer[6] = Data2;
-	mCom->TX_Buffer[7] = Data3;
-	mCom->TX_Buffer[8] = Data4;
-	mCom->TX_Buffer[9] = Data5;
-	mCom->TX_Buffer[10] = Data6;
-	mCom->TX_Buffer[11] = Data7;
-	mCom->TX_Buffer[12] = Data8;
-	mCom->TX_Buffer[13] = Data9;
-	mCom->TX_Buffer[14] = Data10;
-	mCom->TX_Buffer[15] = Data11;
-	mCom->TX_Buffer[16] = Data12;
-	mCom->TX_Buffer[17] = Data13;
-	mCom->TX_Buffer[18] = Data14;
-	mCom->TX_Buffer[19] = mCom->CRC();
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, ReadLen, ReadTimeOut);
+	memset(TX_Buffer, 0, sizeof(TX_Buffer));//发送数组设置为0
+	TX_Buffer[0] = 0xaa; //帧头
+	TX_Buffer[1] = 0x06; //总字节数
+	TX_Buffer[2] = 0x00; //命令字
+	TX_Buffer[3] = 0x08; //执行命令参数
+	TX_Buffer[4] = 0x01;
+	TX_Buffer[5] = CRC();
 
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
-		return -1;
+	if (-1 == mwrite(TX_Buffer, TX_Buffer[1])) {
+		return -1;//发送失败
 
 	} else {
-		int retval = mCom->mselect(1000);
+		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
-			retval = mCom->mread(mCom->RX_Buffer, MAX_NUM);
+			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
-			if (0 == retval) {
-				int length = mCom->RX_Buffer[1];
+			if (0 == retval) { //读取成功
 				PX4_INFO("ReceiveBuffer:");
 
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
+				for (int i = 0; i < RX_Buffer[1]; i++) {
+					printf(" 0x%02x ", RX_Buffer[i]);
 				}
 
-				if (0x00 == mCom->RX_Buffer[3]) {
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
+				if (0x00 == RX_Buffer[3]) {
+					for (int i = 0; i < RX_Buffer[1]; i++) {
+						Buffer[i] = RX_Buffer[i];
 					}
 
 					return 0;
 
-				} else if (0x01 == mCom->RX_Buffer[3]) {
+				} else if (0x01 == RX_Buffer[3]) {
 					return -2;
 
-				} else if (0x02 == mCom->RX_Buffer[3]) {
+				} else if (0x02 == RX_Buffer[3]) {
 					return -3;
 
-				} else if (0x03 == mCom->RX_Buffer[3]) {
+				} else if (0x03 == RX_Buffer[3]) {
 					return -4;
 
-				} else if (0x04 == mCom->RX_Buffer[3]) {
+				} else if (0x04 == RX_Buffer[3]) {
 					return -5;
 				}
 
 				PX4_INFO("\n");
+
 			}
 
 		} else if (0 == retval) {
+			PX4_INFO("Answer timeout.No data");
 			return -6;
 
 		} else if (-1 == retval) {
+			PX4_INFO("Failed to set time of mselect");
 			return -7;
 		}
-	}
 
-	return NULL;
-}
-/********************************************************************************************************
-【函数名】Get_Current_Camera_Magnification
-【功  能】获取设备信息-获取相机当前倍率
-【参  数】Buffer:存取返回报文
-【返回值】0：写入成功并获得正确返回报文
-       -1：写入失败
-       -2：没有0xaa头字节
-       -3：没有接收到正确的命令
-       -4：输入参数不等于计算总字节数
-       -5：校验出来的结果与校验位不相等，校验错误
-       -6：应答超时，没有数据
-       -7：设置等待时间失败
-********************************************************************************************************/
-int Get_Current_Camera_Magnification(unsigned char *Buffer)
-{
-	UART *mCom = new UART(SerialPort4);
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa;
-	mCom->TX_Buffer[1] = 0x06;
-	mCom->TX_Buffer[2] = 0x00;
-	mCom->TX_Buffer[3] = 0x08;
-	mCom->TX_Buffer[4] = 0x01;
-	mCom->TX_Buffer[5] = mCom->CRC();
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, ReadLen, ReadTimeOut);
-
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
-		return  -1;
-
-	} else {
-		int retval = mCom->mselect(1000);
-
-		if (retval > 0) {
-			retval = mCom->mread(mCom->RX_Buffer, MAX_NUM);
-
-			if (0 == retval) {
-				int length = mCom->RX_Buffer[1];
-				PX4_INFO("ReceiveBuffer:");
-
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
-				}
-
-				if (0x00 == mCom->RX_Buffer[3]) {
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
-					}
-
-					return 0;
-
-				} else if (0x01 == mCom->RX_Buffer[3]) {
-					return -2;
-
-				} else if (0x02 == mCom->RX_Buffer[3]) {
-					return -3;
-
-				} else if (0x03 == mCom->RX_Buffer[3]) {
-					return -4;
-
-				} else if (0x04 == mCom->RX_Buffer[3]) {
-					return -5;
-				}
-
-				PX4_INFO("\n");
-			}
-
-		} else if (0 == retval) {
-			return -6;
-
-		} else if (-1 == retval) {
-			return -7;
-		}
 	}
 
 	return NULL;
 }
 /********************************************************************************************************
 【函数名】Zoom_in_Camera_Magnification
-【功  能】获取设备信息-放大相机倍率
-【参  数】Buffer:存取返回报文
+【功  能】放大相机倍率
+【参  数】Buffer
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -1122,72 +996,73 @@ int Get_Current_Camera_Magnification(unsigned char *Buffer)
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Zoom_in_Camera_Magnification(unsigned char *Buffer) //获取设备信息-放大相机倍率
+int UART::Zoom_in_Camera_Magnification(unsigned char *Buffer)
 {
-	UART *mCom = new UART(SerialPort4);
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa;
-	mCom->TX_Buffer[1] = 0x06;
-	mCom->TX_Buffer[2] = 0x00;
-	mCom->TX_Buffer[3] = 0x08;
-	mCom->TX_Buffer[4] = 0x02;
-	mCom->TX_Buffer[5] = mCom->CRC();
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, ReadLen, ReadTimeOut);
+	memset(TX_Buffer, 0, sizeof(TX_Buffer));//发送数组设置为0
+	TX_Buffer[0] = 0xaa; //帧头
+	TX_Buffer[1] = 0x06; //总字节数
+	TX_Buffer[2] = 0x00; //命令字
+	TX_Buffer[3] = 0x08; //执行命令参数
+	TX_Buffer[4] = 0x02;
+	TX_Buffer[5] = CRC();
 
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
-		return  -1;
+	if (-1 == mwrite(TX_Buffer, TX_Buffer[1])) {
+		return -1;//发送失败
 
 	} else {
-		int retval = mCom->mselect(1000);
+		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
-			retval = mCom->mread(mCom->RX_Buffer, MAX_NUM);
+			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
-			if (0 == retval) {
-				int length = mCom->RX_Buffer[1];
+			if (0 == retval) { //读取成功
 				PX4_INFO("ReceiveBuffer:");
 
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
+				for (int i = 0; i < RX_Buffer[1]; i++) {
+					printf(" 0x%02x ", RX_Buffer[i]);
 				}
 
-				if (0x00 == mCom->RX_Buffer[3]) {
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
+				if (0x00 == RX_Buffer[3]) {
+					for (int i = 0; i < RX_Buffer[1]; i++) {
+						Buffer[i] = RX_Buffer[i];
 					}
 
 					return 0;
 
-				} else if (0x01 == mCom->RX_Buffer[3]) {
+				} else if (0x01 == RX_Buffer[3]) {
 					return -2;
 
-				} else if (0x02 == mCom->RX_Buffer[3]) {
+				} else if (0x02 == RX_Buffer[3]) {
 					return -3;
 
-				} else if (0x03 == mCom->RX_Buffer[3]) {
+				} else if (0x03 == RX_Buffer[3]) {
 					return -4;
 
-				} else if (0x04 == mCom->RX_Buffer[3]) {
+				} else if (0x04 == RX_Buffer[3]) {
 					return -5;
 				}
 
 				PX4_INFO("\n");
+
 			}
 
 		} else if (0 == retval) {
+			PX4_INFO("Answer timeout.No data");
 			return -6;
 
 		} else if (-1 == retval) {
+			PX4_INFO("Failed to set time of mselect");
 			return -7;
 		}
+
 	}
 
 	return NULL;
 }
 /********************************************************************************************************
 【函数名】Zoom_out_Camera_Magnification
-【功  能】获取设备信息-缩小相机倍率
-【参  数】Buffer:存取返回报文
+【功  能】缩小相机倍率
+【参  数】Buffer
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -1197,72 +1072,73 @@ int Zoom_in_Camera_Magnification(unsigned char *Buffer) //获取设备信息-放
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Zoom_out_Camera_Magnification(unsigned char *Buffer)//获取设备信息-缩小相机倍率
+int UART::Zoom_out_Camera_Magnification(unsigned char *Buffer)
 {
-	UART *mCom = new UART(SerialPort4);
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa;
-	mCom->TX_Buffer[1] = 0x06;
-	mCom->TX_Buffer[2] = 0x00;
-	mCom->TX_Buffer[3] = 0x08;
-	mCom->TX_Buffer[4] = 0x03;
-	mCom->TX_Buffer[5] = mCom->CRC();
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, ReadLen, ReadTimeOut);
+	memset(TX_Buffer, 0, sizeof(TX_Buffer));//发送数组设置为0
+	TX_Buffer[0] = 0xaa; //帧头
+	TX_Buffer[1] = 0x06; //总字节数
+	TX_Buffer[2] = 0x00; //命令字
+	TX_Buffer[3] = 0x08; //执行命令参数
+	TX_Buffer[4] = 0x03;
+	TX_Buffer[5] = CRC();
 
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
-		return  -1;
+	if (-1 == mwrite(TX_Buffer, TX_Buffer[1])) {
+		return -1;//发送失败
 
 	} else {
-		int retval = mCom->mselect(1000);
+		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
-			retval = mCom->mread(mCom->RX_Buffer, MAX_NUM);
+			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
-			if (0 == retval) {
-				int length = mCom->RX_Buffer[1];
+			if (0 == retval) { //读取成功
 				PX4_INFO("ReceiveBuffer:");
 
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
+				for (int i = 0; i < RX_Buffer[1]; i++) {
+					printf(" 0x%02x ", RX_Buffer[i]);
 				}
 
-				if (0x00 == mCom->RX_Buffer[3]) {
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
+				if (0x00 == RX_Buffer[3]) {
+					for (int i = 0; i < RX_Buffer[1]; i++) {
+						Buffer[i] = RX_Buffer[i];
 					}
 
 					return 0;
 
-				} else if (0x01 == mCom->RX_Buffer[3]) {
+				} else if (0x01 == RX_Buffer[3]) {
 					return -2;
 
-				} else if (0x02 == mCom->RX_Buffer[3]) {
+				} else if (0x02 == RX_Buffer[3]) {
 					return -3;
 
-				} else if (0x03 == mCom->RX_Buffer[3]) {
+				} else if (0x03 == RX_Buffer[3]) {
 					return -4;
 
-				} else if (0x04 == mCom->RX_Buffer[3]) {
+				} else if (0x04 == RX_Buffer[3]) {
 					return -5;
 				}
 
 				PX4_INFO("\n");
+
 			}
 
 		} else if (0 == retval) {
+			PX4_INFO("Answer timeout.No data");
 			return -6;
 
 		} else if (-1 == retval) {
+			PX4_INFO("Failed to set time of mselect");
 			return -7;
 		}
+
 	}
 
 	return NULL;
 }
 /********************************************************************************************************
 【函数名】Switch_Camera_Mode
-【功  能】获取设备信息-切换相机模式
-【参  数】Buffer:存取返回报文
+【功  能】切换相机模式
+【参  数】Buffer
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -1272,72 +1148,72 @@ int Zoom_out_Camera_Magnification(unsigned char *Buffer)//获取设备信息-缩
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Switch_Camera_Mode(unsigned char *Buffer)//切换相机模式
+int UART::Switch_Camera_Mode(unsigned char *Buffer)
 {
-	UART *mCom = new UART(SerialPort4);
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa;
-	mCom->TX_Buffer[1] = 0x05;
-	mCom->TX_Buffer[2] = 0x01;
-	mCom->TX_Buffer[3] = 0x01;
-	mCom->TX_Buffer[4] = mCom->CRC();
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, ReadLen, ReadTimeOut);
+	memset(TX_Buffer, 0, sizeof(TX_Buffer));//发送数组设置为0
+	TX_Buffer[0] = 0xaa; //帧头
+	TX_Buffer[1] = 0x05; //总字节数
+	TX_Buffer[2] = 0x01; //命令字
+	TX_Buffer[3] = 0x01; //执行命令参数
+	TX_Buffer[4] = CRC();
 
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
-		return  -1;
+	if (-1 == mwrite(TX_Buffer, TX_Buffer[1])) {
+		return -1;//发送失败
 
 	} else {
-		int retval = mCom->mselect(1000);
+		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
-			retval = mCom->mread(mCom->RX_Buffer, MAX_NUM);
+			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
-			if (0 == retval) {
-				int length = mCom->RX_Buffer[1];
+			if (0 == retval) { //读取成功
 				PX4_INFO("ReceiveBuffer:");
 
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
+				for (int i = 0; i < RX_Buffer[1]; i++) {
+					printf(" 0x%02x ", RX_Buffer[i]);
 				}
 
-				if (0x00 == mCom->RX_Buffer[3]) {
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
+				if (0x00 == RX_Buffer[3]) {
+					for (int i = 0; i < RX_Buffer[1]; i++) {
+						Buffer[i] = RX_Buffer[i];
 					}
 
 					return 0;
 
-				} else if (0x01 == mCom->RX_Buffer[3]) {
+				} else if (0x01 == RX_Buffer[3]) {
 					return -2;
 
-				} else if (0x02 == mCom->RX_Buffer[3]) {
+				} else if (0x02 == RX_Buffer[3]) {
 					return -3;
 
-				} else if (0x03 == mCom->RX_Buffer[3]) {
+				} else if (0x03 == RX_Buffer[3]) {
 					return -4;
 
-				} else if (0x04 == mCom->RX_Buffer[3]) {
+				} else if (0x04 == RX_Buffer[3]) {
 					return -5;
 				}
 
 				PX4_INFO("\n");
+
 			}
 
 		} else if (0 == retval) {
+			PX4_INFO("Answer timeout.No data");
 			return -6;
 
 		} else if (-1 == retval) {
+			PX4_INFO("Failed to set time of mselect");
 			return -7;
 		}
+
 	}
 
 	return NULL;
-
 }
 /********************************************************************************************************
-【函数名】Set_Camera_To_Take_PictureOrVideo_In_Preview_Mode
-【功  能】设置相机在预览模式下拍照或录像
-【参  数】Buffer:存取返回报文
+【函数名】Set_Camera_To_Take_PictureOrVideo_InPreview_Mode
+【功  能】在阅览模式下拍照/录像
+【参  数】Buffer
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -1347,72 +1223,72 @@ int Switch_Camera_Mode(unsigned char *Buffer)//切换相机模式
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Set_Camera_To_Take_PictureOrVideo_In_Preview_Mode(unsigned char
-		*Buffer) //设置相机在预览模式下拍照或录像
+int UART::Set_Camera_To_Take_PictureOrVideo_In_Preview_Mode(unsigned char *Buffer)
 {
-	UART *mCom = new UART(SerialPort4);
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa;
-	mCom->TX_Buffer[1] = 0x05;
-	mCom->TX_Buffer[2] = 0x01;
-	mCom->TX_Buffer[3] = 0x02;
-	mCom->TX_Buffer[4] = mCom->CRC();
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, ReadLen, ReadTimeOut);
+	memset(TX_Buffer, 0, sizeof(TX_Buffer));//发送数组设置为0
+	TX_Buffer[0] = 0xaa; //帧头
+	TX_Buffer[1] = 0x05; //总字节数
+	TX_Buffer[2] = 0x01; //命令字
+	TX_Buffer[3] = 0x02; //执行命令参数
+	TX_Buffer[4] = CRC();
 
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
-		return  -1;
+	if (-1 == mwrite(TX_Buffer, TX_Buffer[1])) {
+		return -1;//发送失败
 
 	} else {
-		int retval = mCom->mselect(1000);
+		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
-			retval = mCom->mread(mCom->RX_Buffer, MAX_NUM);
+			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
-			if (0 == retval) {
-				int length = mCom->RX_Buffer[1];
+			if (0 == retval) { //读取成功
 				PX4_INFO("ReceiveBuffer:");
 
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
+				for (int i = 0; i < RX_Buffer[1]; i++) {
+					printf(" 0x%02x ", RX_Buffer[i]);
 				}
 
-				if (0x00 == mCom->RX_Buffer[3]) {
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
+				if (0x00 == RX_Buffer[3]) {
+					for (int i = 0; i < RX_Buffer[1]; i++) {
+						Buffer[i] = RX_Buffer[i];
 					}
 
 					return 0;
 
-				} else if (0x01 == mCom->RX_Buffer[3]) {
+				} else if (0x01 == RX_Buffer[3]) {
 					return -2;
 
-				} else if (0x02 == mCom->RX_Buffer[3]) {
+				} else if (0x02 == RX_Buffer[3]) {
 					return -3;
 
-				} else if (0x03 == mCom->RX_Buffer[3]) {
+				} else if (0x03 == RX_Buffer[3]) {
 					return -4;
 
-				} else if (0x04 == mCom->RX_Buffer[3]) {
+				} else if (0x04 == RX_Buffer[3]) {
 					return -5;
 				}
 
 				PX4_INFO("\n");
+
 			}
 
 		} else if (0 == retval) {
+			PX4_INFO("Answer timeout.No data");
 			return -6;
 
 		} else if (-1 == retval) {
+			PX4_INFO("Failed to set time of mselect");
 			return -7;
 		}
+
 	}
 
 	return NULL;
 }
 /********************************************************************************************************
 【函数名】Switch_Camera_WiFi_ONorOFF
-【功  能】开关相机WiFi
-【参  数】Buffer:存取返回报文
+【功  能】开关WiFi
+【参  数】Buffer
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -1422,71 +1298,72 @@ int Set_Camera_To_Take_PictureOrVideo_In_Preview_Mode(unsigned char
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Switch_Camera_WiFi_ONorOFF(unsigned char *Buffer) //开/关相机WiFi
+int UART::Switch_Camera_WiFi_ONorOFF(unsigned char *Buffer)
 {
-	UART *mCom = new UART(SerialPort4);
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa;
-	mCom->TX_Buffer[1] = 0x05;
-	mCom->TX_Buffer[2] = 0x01;
-	mCom->TX_Buffer[3] = 0x03;
-	mCom->TX_Buffer[4] = mCom->CRC();
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, ReadLen, ReadTimeOut);
+	memset(TX_Buffer, 0, sizeof(TX_Buffer));//发送数组设置为0
+	TX_Buffer[0] = 0xaa; //帧头
+	TX_Buffer[1] = 0x05; //总字节数
+	TX_Buffer[2] = 0x01; //命令字
+	TX_Buffer[3] = 0x03; //执行命令参数
+	TX_Buffer[4] = CRC();
 
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
-		return  -1;
+	if (-1 == mwrite(TX_Buffer, TX_Buffer[1])) {
+		return -1;//发送失败
 
 	} else {
-		int retval = mCom->mselect(1000);
+		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
-			retval = mCom->mread(mCom->RX_Buffer, MAX_NUM);
+			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
-			if (0 == retval) {
-				int length = mCom->RX_Buffer[1];
+			if (0 == retval) { //读取成功
 				PX4_INFO("ReceiveBuffer:");
 
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
+				for (int i = 0; i < RX_Buffer[1]; i++) {
+					printf(" 0x%02x ", RX_Buffer[i]);
 				}
 
-				if (0x00 == mCom->RX_Buffer[3]) {
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
+				if (0x00 == RX_Buffer[3]) {
+					for (int i = 0; i < RX_Buffer[1]; i++) {
+						Buffer[i] = RX_Buffer[i];
 					}
 
 					return 0;
 
-				} else if (0x01 == mCom->RX_Buffer[3]) {
+				} else if (0x01 == RX_Buffer[3]) {
 					return -2;
 
-				} else if (0x02 == mCom->RX_Buffer[3]) {
+				} else if (0x02 == RX_Buffer[3]) {
 					return -3;
 
-				} else if (0x03 == mCom->RX_Buffer[3]) {
+				} else if (0x03 == RX_Buffer[3]) {
 					return -4;
 
-				} else if (0x04 == mCom->RX_Buffer[3]) {
+				} else if (0x04 == RX_Buffer[3]) {
 					return -5;
 				}
 
 				PX4_INFO("\n");
+
 			}
 
 		} else if (0 == retval) {
+			PX4_INFO("Answer timeout.No data");
 			return -6;
 
 		} else if (-1 == retval) {
+			PX4_INFO("Failed to set time of mselect");
 			return -7;
 		}
+
 	}
 
 	return NULL;
 }
 /********************************************************************************************************
 【函数名】Set_Camera_To_Take_Quick_Photo
-【功  能】设置相机快捷拍照
-【参  数】Buffer:存取返回报文
+【功  能】快捷拍照
+【参  数】Buffer
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -1496,71 +1373,72 @@ int Switch_Camera_WiFi_ONorOFF(unsigned char *Buffer) //开/关相机WiFi
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Set_Camera_To_Take_Quick_Photo(unsigned char *Buffer) //设置相机快捷拍照
+int UART::Set_Camera_To_Take_Quick_Photo(unsigned char *Buffer)
 {
-	UART *mCom = new UART(SerialPort4);
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa;
-	mCom->TX_Buffer[1] = 0x05;
-	mCom->TX_Buffer[2] = 0x01;
-	mCom->TX_Buffer[3] = 0x04;
-	mCom->TX_Buffer[4] = mCom->CRC();
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, ReadLen, ReadTimeOut);
+	memset(TX_Buffer, 0, sizeof(TX_Buffer));//发送数组设置为0
+	TX_Buffer[0] = 0xaa; //帧头
+	TX_Buffer[1] = 0x05; //总字节数
+	TX_Buffer[2] = 0x01; //命令字
+	TX_Buffer[3] = 0x04; //执行命令参数
+	TX_Buffer[4] = CRC();
 
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
-		return  -1;
+	if (-1 == mwrite(TX_Buffer, TX_Buffer[1])) {
+		return -1;//发送失败
 
 	} else {
-		int retval = mCom->mselect(1000);
+		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
-			retval = mCom->mread(mCom->RX_Buffer, MAX_NUM);
+			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
-			if (0 == retval) {
-				int length = mCom->RX_Buffer[1];
+			if (0 == retval) { //读取成功
 				PX4_INFO("ReceiveBuffer:");
 
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
+				for (int i = 0; i < RX_Buffer[1]; i++) {
+					printf(" 0x%02x ", RX_Buffer[i]);
 				}
 
-				if (0x00 == mCom->RX_Buffer[3]) {
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
+				if (0x00 == RX_Buffer[3]) {
+					for (int i = 0; i < RX_Buffer[1]; i++) {
+						Buffer[i] = RX_Buffer[i];
 					}
 
 					return 0;
 
-				} else if (0x01 == mCom->RX_Buffer[3]) {
+				} else if (0x01 == RX_Buffer[3]) {
 					return -2;
 
-				} else if (0x02 == mCom->RX_Buffer[3]) {
+				} else if (0x02 == RX_Buffer[3]) {
 					return -3;
 
-				} else if (0x03 == mCom->RX_Buffer[3]) {
+				} else if (0x03 == RX_Buffer[3]) {
 					return -4;
 
-				} else if (0x04 == mCom->RX_Buffer[3]) {
+				} else if (0x04 == RX_Buffer[3]) {
 					return -5;
 				}
 
 				PX4_INFO("\n");
+
 			}
 
 		} else if (0 == retval) {
+			PX4_INFO("Answer timeout.No data");
 			return -6;
 
 		} else if (-1 == retval) {
+			PX4_INFO("Failed to set time of mselect");
 			return -7;
 		}
+
 	}
 
 	return NULL;
 }
 /********************************************************************************************************
 【函数名】Set_Camera_To_Take_Quick_Video
-【功  能】设置相机快捷录像
-【参  数】Buffer:存取返回报文
+【功  能】快捷录像
+【参  数】Buffer
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -1570,71 +1448,72 @@ int Set_Camera_To_Take_Quick_Photo(unsigned char *Buffer) //设置相机快捷�
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Set_Camera_To_Take_Quick_Video(unsigned char *Buffer)//设置相机快捷录像
+int UART::Set_Camera_To_Take_Quick_Video(unsigned char *Buffer)
 {
-	UART *mCom = new UART(SerialPort4);
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa;
-	mCom->TX_Buffer[1] = 0x05;
-	mCom->TX_Buffer[2] = 0x01;
-	mCom->TX_Buffer[3] = 0x05;
-	mCom->TX_Buffer[4] = mCom->CRC();
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, ReadLen, ReadTimeOut);
+	memset(TX_Buffer, 0, sizeof(TX_Buffer));//发送数组设置为0
+	TX_Buffer[0] = 0xaa; //帧头
+	TX_Buffer[1] = 0x05; //总字节数
+	TX_Buffer[2] = 0x01; //命令字
+	TX_Buffer[3] = 0x05; //执行命令参数
+	TX_Buffer[4] = CRC();
 
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
-		return  -1;
+	if (-1 == mwrite(TX_Buffer, TX_Buffer[1])) {
+		return -1;//发送失败
 
 	} else {
-		int retval = mCom->mselect(1000);
+		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
-			retval = mCom->mread(mCom->RX_Buffer, MAX_NUM);
+			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
-			if (0 == retval) {
-				int length = mCom->RX_Buffer[1];
+			if (0 == retval) { //读取成功
 				PX4_INFO("ReceiveBuffer:");
 
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
+				for (int i = 0; i < RX_Buffer[1]; i++) {
+					printf(" 0x%02x ", RX_Buffer[i]);
 				}
 
-				if (0x00 == mCom->RX_Buffer[3]) {
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
+				if (0x00 == RX_Buffer[3]) {
+					for (int i = 0; i < RX_Buffer[1]; i++) {
+						Buffer[i] = RX_Buffer[i];
 					}
 
 					return 0;
 
-				} else if (0x01 == mCom->RX_Buffer[3]) {
+				} else if (0x01 == RX_Buffer[3]) {
 					return -2;
 
-				} else if (0x02 == mCom->RX_Buffer[3]) {
+				} else if (0x02 == RX_Buffer[3]) {
 					return -3;
 
-				} else if (0x03 == mCom->RX_Buffer[3]) {
+				} else if (0x03 == RX_Buffer[3]) {
 					return -4;
 
-				} else if (0x04 == mCom->RX_Buffer[3]) {
+				} else if (0x04 == RX_Buffer[3]) {
 					return -5;
 				}
 
 				PX4_INFO("\n");
+
 			}
 
 		} else if (0 == retval) {
+			PX4_INFO("Answer timeout.No data");
 			return -6;
 
 		} else if (-1 == retval) {
+			PX4_INFO("Failed to set time of mselect");
 			return -7;
 		}
+
 	}
 
 	return NULL;
 }
 /********************************************************************************************************
-【函数名】Format_SDCard
+【函数名】Formate_SDCard
 【功  能】格式化SD卡
-【参  数】Buffer:存取返回报文
+【参  数】Buffer
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -1644,63 +1523,64 @@ int Set_Camera_To_Take_Quick_Video(unsigned char *Buffer)//设置相机快捷录
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Formate_SDCard(unsigned char *Buffer) //格式化SD卡
+int UART::Formate_SDCard(unsigned char *Buffer)
 {
-	UART *mCom = new UART(SerialPort4);
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa;
-	mCom->TX_Buffer[1] = 0x05;
-	mCom->TX_Buffer[2] = 0x01;
-	mCom->TX_Buffer[3] = 0x06;
-	mCom->TX_Buffer[4] = mCom->CRC();
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, ReadLen, ReadTimeOut);
+	memset(TX_Buffer, 0, sizeof(TX_Buffer));//发送数组设置为0
+	TX_Buffer[0] = 0xaa; //帧头
+	TX_Buffer[1] = 0x05; //总字节数
+	TX_Buffer[2] = 0x01; //命令字
+	TX_Buffer[3] = 0x06; //执行命令参数
+	TX_Buffer[4] = CRC();
 
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
-		return  -1;
+	if (-1 == mwrite(TX_Buffer, TX_Buffer[1])) {
+		return -1;//发送失败
 
 	} else {
-		int retval = mCom->mselect(1000);
+		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
-			retval = mCom->mread(mCom->RX_Buffer, MAX_NUM);
+			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
-			if (0 == retval) {
-				int length = mCom->RX_Buffer[1];
+			if (0 == retval) { //读取成功
 				PX4_INFO("ReceiveBuffer:");
 
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
+				for (int i = 0; i < RX_Buffer[1]; i++) {
+					printf(" 0x%02x ", RX_Buffer[i]);
 				}
 
-				if (0x00 == mCom->RX_Buffer[3]) {
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
+				if (0x00 == RX_Buffer[3]) {
+					for (int i = 0; i < RX_Buffer[1]; i++) {
+						Buffer[i] = RX_Buffer[i];
 					}
 
 					return 0;
 
-				} else if (0x01 == mCom->RX_Buffer[3]) {
+				} else if (0x01 == RX_Buffer[3]) {
 					return -2;
 
-				} else if (0x02 == mCom->RX_Buffer[3]) {
+				} else if (0x02 == RX_Buffer[3]) {
 					return -3;
 
-				} else if (0x03 == mCom->RX_Buffer[3]) {
+				} else if (0x03 == RX_Buffer[3]) {
 					return -4;
 
-				} else if (0x04 == mCom->RX_Buffer[3]) {
+				} else if (0x04 == RX_Buffer[3]) {
 					return -5;
 				}
 
 				PX4_INFO("\n");
+
 			}
 
 		} else if (0 == retval) {
+			PX4_INFO("Answer timeout.No data");
 			return -6;
 
 		} else if (-1 == retval) {
+			PX4_INFO("Failed to set time of mselect");
 			return -7;
 		}
+
 	}
 
 	return NULL;
@@ -1708,7 +1588,7 @@ int Formate_SDCard(unsigned char *Buffer) //格式化SD卡
 /********************************************************************************************************
 【函数名】Set_Camera_Color_Mode
 【功  能】设置相机彩色模式
-【参  数】Buffer:存取返回报文
+【参  数】Buffer
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -1718,64 +1598,65 @@ int Formate_SDCard(unsigned char *Buffer) //格式化SD卡
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Set_Camera_Color_Mode(unsigned char *Buffer)//设置相机彩色模式
+int UART::Set_Camera_Color_Mode(unsigned char *Buffer)
 {
-	UART *mCom = new UART(SerialPort4);
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa;
-	mCom->TX_Buffer[1] = 0x06;
-	mCom->TX_Buffer[2] = 0x01;
-	mCom->TX_Buffer[3] = 0x07;
-	mCom->TX_Buffer[4] = 0x01;
-	mCom->TX_Buffer[5] = mCom->CRC();
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, ReadLen, ReadTimeOut);
+	memset(TX_Buffer, 0, sizeof(TX_Buffer));//发送数组设置为0
+	TX_Buffer[0] = 0xaa; //帧头
+	TX_Buffer[1] = 0x06; //总字节数
+	TX_Buffer[2] = 0x01; //命令字
+	TX_Buffer[3] = 0x07; //执行命令参数
+	TX_Buffer[4] = 0x01;
+	TX_Buffer[5] = CRC();
 
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
-		return  -1;
+	if (-1 == mwrite(TX_Buffer, TX_Buffer[1])) {
+		return -1;//发送失败
 
 	} else {
-		int retval = mCom->mselect(1000);
+		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
-			retval = mCom->mread(mCom->RX_Buffer, MAX_NUM);
+			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
-			if (0 == retval) {
-				int length = mCom->RX_Buffer[1];
+			if (0 == retval) { //读取成功
 				PX4_INFO("ReceiveBuffer:");
 
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
+				for (int i = 0; i < RX_Buffer[1]; i++) {
+					printf(" 0x%02x ", RX_Buffer[i]);
 				}
 
-				if (0x00 == mCom->RX_Buffer[3]) {
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
+				if (0x00 == RX_Buffer[3]) {
+					for (int i = 0; i < RX_Buffer[1]; i++) {
+						Buffer[i] = RX_Buffer[i];
 					}
 
 					return 0;
 
-				} else if (0x01 == mCom->RX_Buffer[3]) {
+				} else if (0x01 == RX_Buffer[3]) {
 					return -2;
 
-				} else if (0x02 == mCom->RX_Buffer[3]) {
+				} else if (0x02 == RX_Buffer[3]) {
 					return -3;
 
-				} else if (0x03 == mCom->RX_Buffer[3]) {
+				} else if (0x03 == RX_Buffer[3]) {
 					return -4;
 
-				} else if (0x04 == mCom->RX_Buffer[3]) {
+				} else if (0x04 == RX_Buffer[3]) {
 					return -5;
 				}
 
 				PX4_INFO("\n");
+
 			}
 
 		} else if (0 == retval) {
+			PX4_INFO("Answer timeout.No data");
 			return -6;
 
 		} else if (-1 == retval) {
+			PX4_INFO("Failed to set time of mselect");
 			return -7;
 		}
+
 	}
 
 	return NULL;
@@ -1783,7 +1664,7 @@ int Set_Camera_Color_Mode(unsigned char *Buffer)//设置相机彩色模式
 /********************************************************************************************************
 【函数名】Set_Camera_BlackWhite_Mode
 【功  能】设置相机黑白模式
-【参  数】Buffer:存取返回报文
+【参  数】Buffer
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -1793,72 +1674,73 @@ int Set_Camera_Color_Mode(unsigned char *Buffer)//设置相机彩色模式
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Set_Camera_BlackWhite_Mode(unsigned char *Buffer) //设置相机黑白模式
+int UART::Set_Camera_BlackWhite_Mode(unsigned char *Buffer)
 {
-	UART *mCom = new UART(SerialPort4);
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa;
-	mCom->TX_Buffer[1] = 0x06;
-	mCom->TX_Buffer[2] = 0x01;
-	mCom->TX_Buffer[3] = 0x07;
-	mCom->TX_Buffer[4] = 0x02;
-	mCom->TX_Buffer[5] = mCom->CRC();
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, ReadLen, ReadTimeOut);
+	memset(TX_Buffer, 0, sizeof(TX_Buffer));//发送数组设置为0
+	TX_Buffer[0] = 0xaa; //帧头
+	TX_Buffer[1] = 0x06; //总字节数
+	TX_Buffer[2] = 0x01; //命令字
+	TX_Buffer[3] = 0x07; //执行命令参数
+	TX_Buffer[4] = 0x02;
+	TX_Buffer[5] = CRC();
 
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
-		return  -1;
+	if (-1 == mwrite(TX_Buffer, TX_Buffer[1])) {
+		return -1;//发送失败
 
 	} else {
-		int retval = mCom->mselect(1000);
+		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
-			retval = mCom->mread(mCom->RX_Buffer, MAX_NUM);
+			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
-			if (0 == retval) {
-				int length = mCom->RX_Buffer[1];
+			if (0 == retval) { //读取成功
 				PX4_INFO("ReceiveBuffer:");
 
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
+				for (int i = 0; i < RX_Buffer[1]; i++) {
+					printf(" 0x%02x ", RX_Buffer[i]);
 				}
 
-				if (0x00 == mCom->RX_Buffer[3]) {
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
+				if (0x00 == RX_Buffer[3]) {
+					for (int i = 0; i < RX_Buffer[1]; i++) {
+						Buffer[i] = RX_Buffer[i];
 					}
 
 					return 0;
 
-				} else if (0x01 == mCom->RX_Buffer[3]) {
+				} else if (0x01 == RX_Buffer[3]) {
 					return -2;
 
-				} else if (0x02 == mCom->RX_Buffer[3]) {
+				} else if (0x02 == RX_Buffer[3]) {
 					return -3;
 
-				} else if (0x03 == mCom->RX_Buffer[3]) {
+				} else if (0x03 == RX_Buffer[3]) {
 					return -4;
 
-				} else if (0x04 == mCom->RX_Buffer[3]) {
+				} else if (0x04 == RX_Buffer[3]) {
 					return -5;
 				}
 
 				PX4_INFO("\n");
+
 			}
 
 		} else if (0 == retval) {
+			PX4_INFO("Answer timeout.No data");
 			return -6;
 
 		} else if (-1 == retval) {
+			PX4_INFO("Failed to set time of mselect");
 			return -7;
 		}
+
 	}
 
 	return NULL;
 }
 /********************************************************************************************************
 【函数名】Set_Gimbal_Full_Follow_Mode
-【功  能】设置云台跟随模式
-【参  数】Buffer:存取返回报文
+【功  能】设置云台全跟随模式
+【参  数】Buffer
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -1868,64 +1750,65 @@ int Set_Camera_BlackWhite_Mode(unsigned char *Buffer) //设置相机黑白模式
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Set_Gimbal_Full_Follow_Mode(unsigned char *Buffer) //设置云台跟随模式
+int UART::Set_Gimbal_Full_Follow_Mode(unsigned char *Buffer)
 {
-	UART *mCom = new UART(SerialPort4);
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa;
-	mCom->TX_Buffer[1] = 0x06;
-	mCom->TX_Buffer[2] = 0x05;
-	mCom->TX_Buffer[3] = 0x01;
-	mCom->TX_Buffer[4] = 0x00;
-	mCom->TX_Buffer[5] = mCom->CRC();
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, ReadLen, ReadTimeOut);
+	memset(TX_Buffer, 0, sizeof(TX_Buffer));//发送数组设置为0
+	TX_Buffer[0] = 0xaa; //帧头
+	TX_Buffer[1] = 0x06; //总字节数
+	TX_Buffer[2] = 0x05; //命令字
+	TX_Buffer[3] = 0x01; //执行命令参数
+	TX_Buffer[4] = 0x00;
+	TX_Buffer[5] = CRC();
 
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
-		return  -1;
+	if (-1 == mwrite(TX_Buffer, TX_Buffer[1])) {
+		return -1;//发送失败
 
 	} else {
-		int retval = mCom->mselect(1000);
+		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
-			retval = mCom->mread(mCom->RX_Buffer, MAX_NUM);
+			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
-			if (0 == retval) {
-				int length = mCom->RX_Buffer[1];
+			if (0 == retval) { //读取成功
 				PX4_INFO("ReceiveBuffer:");
 
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
+				for (int i = 0; i < RX_Buffer[1]; i++) {
+					printf(" 0x%02x ", RX_Buffer[i]);
 				}
 
-				if (0x00 == mCom->RX_Buffer[3]) {
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
+				if (0x00 == RX_Buffer[3]) {
+					for (int i = 0; i < RX_Buffer[1]; i++) {
+						Buffer[i] = RX_Buffer[i];
 					}
 
 					return 0;
 
-				} else if (0x01 == mCom->RX_Buffer[3]) {
+				} else if (0x01 == RX_Buffer[3]) {
 					return -2;
 
-				} else if (0x02 == mCom->RX_Buffer[3]) {
+				} else if (0x02 == RX_Buffer[3]) {
 					return -3;
 
-				} else if (0x03 == mCom->RX_Buffer[3]) {
+				} else if (0x03 == RX_Buffer[3]) {
 					return -4;
 
-				} else if (0x04 == mCom->RX_Buffer[3]) {
+				} else if (0x04 == RX_Buffer[3]) {
 					return -5;
 				}
 
 				PX4_INFO("\n");
+
 			}
 
 		} else if (0 == retval) {
+			PX4_INFO("Answer timeout.No data");
 			return -6;
 
 		} else if (-1 == retval) {
+			PX4_INFO("Failed to set time of mselect");
 			return -7;
 		}
+
 	}
 
 	return NULL;
@@ -1933,7 +1816,7 @@ int Set_Gimbal_Full_Follow_Mode(unsigned char *Buffer) //设置云台跟随模�
 /********************************************************************************************************
 【函数名】Gimbal_HeadingFollow_PitchLock
 【功  能】设置云台航向跟随，俯仰锁定
-【参  数】Buffer:存取返回报文
+【参  数】Buffer
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -1943,64 +1826,65 @@ int Set_Gimbal_Full_Follow_Mode(unsigned char *Buffer) //设置云台跟随模�
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Gimbal_HeadingFollow_PitchLock(unsigned char *Buffer) //设置云台航向跟随，俯仰锁定
+int UART::Gimbal_HeadingFollow_PitchLock(unsigned char *Buffer)
 {
-	UART *mCom = new UART(SerialPort4);
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa;
-	mCom->TX_Buffer[1] = 0x06;
-	mCom->TX_Buffer[2] = 0x05;
-	mCom->TX_Buffer[3] = 0x01;
-	mCom->TX_Buffer[4] = 0x01;
-	mCom->TX_Buffer[5] = mCom->CRC();
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, ReadLen, ReadTimeOut);
+	memset(TX_Buffer, 0, sizeof(TX_Buffer));//发送数组设置为0
+	TX_Buffer[0] = 0xaa; //帧头
+	TX_Buffer[1] = 0x06; //总字节数
+	TX_Buffer[2] = 0x05; //命令字
+	TX_Buffer[3] = 0x01; //执行命令参数
+	TX_Buffer[4] = 0x01;
+	TX_Buffer[5] = CRC();
 
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
-		return  -1;
+	if (-1 == mwrite(TX_Buffer, TX_Buffer[1])) {
+		return -1;//发送失败
 
 	} else {
-		int retval = mCom->mselect(1000);
+		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
-			retval = mCom->mread(mCom->RX_Buffer, MAX_NUM);
+			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
-			if (0 == retval) {
-				int length = mCom->RX_Buffer[1];
+			if (0 == retval) { //读取成功
 				PX4_INFO("ReceiveBuffer:");
 
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
+				for (int i = 0; i < RX_Buffer[1]; i++) {
+					printf(" 0x%02x ", RX_Buffer[i]);
 				}
 
-				if (0x00 == mCom->RX_Buffer[3]) {
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
+				if (0x00 == RX_Buffer[3]) {
+					for (int i = 0; i < RX_Buffer[1]; i++) {
+						Buffer[i] = RX_Buffer[i];
 					}
 
 					return 0;
 
-				} else if (0x01 == mCom->RX_Buffer[3]) {
+				} else if (0x01 == RX_Buffer[3]) {
 					return -2;
 
-				} else if (0x02 == mCom->RX_Buffer[3]) {
+				} else if (0x02 == RX_Buffer[3]) {
 					return -3;
 
-				} else if (0x03 == mCom->RX_Buffer[3]) {
+				} else if (0x03 == RX_Buffer[3]) {
 					return -4;
 
-				} else if (0x04 == mCom->RX_Buffer[3]) {
+				} else if (0x04 == RX_Buffer[3]) {
 					return -5;
 				}
 
 				PX4_INFO("\n");
+
 			}
 
 		} else if (0 == retval) {
+			PX4_INFO("Answer timeout.No data");
 			return -6;
 
 		} else if (-1 == retval) {
+			PX4_INFO("Failed to set time of mselect");
 			return -7;
 		}
+
 	}
 
 	return NULL;
@@ -2008,7 +1892,7 @@ int Gimbal_HeadingFollow_PitchLock(unsigned char *Buffer) //设置云台航向�
 /********************************************************************************************************
 【函数名】Gimbal_HeadingFollowTF_GimbalLock
 【功  能】设置云台航向俯仰跟随TF，云台跟随
-【参  数】Buffer:存取返回报文
+【参  数】Buffer
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -2018,64 +1902,65 @@ int Gimbal_HeadingFollow_PitchLock(unsigned char *Buffer) //设置云台航向�
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Gimbal_HeadingFollowTF_GimbalLock(unsigned char *Buffer) //设置云台航向俯仰跟随TF，云台跟随
+int UART::Gimbal_HeadingFollowTF_GimbalLock(unsigned char *Buffer)
 {
-	UART *mCom = new UART(SerialPort4);
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa;
-	mCom->TX_Buffer[1] = 0x06;
-	mCom->TX_Buffer[2] = 0x05;
-	mCom->TX_Buffer[3] = 0x01;
-	mCom->TX_Buffer[4] = 0x02;
-	mCom->TX_Buffer[5] = mCom->CRC();
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, ReadLen, ReadTimeOut);
+	memset(TX_Buffer, 0, sizeof(TX_Buffer));//发送数组设置为0
+	TX_Buffer[0] = 0xaa; //帧头
+	TX_Buffer[1] = 0x06; //总字节数
+	TX_Buffer[2] = 0x05; //命令字
+	TX_Buffer[3] = 0x01; //执行命令参数
+	TX_Buffer[4] = 0x02;
+	TX_Buffer[5] = CRC();
 
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
-		return  -1;
+	if (-1 == mwrite(TX_Buffer, TX_Buffer[1])) {
+		return -1;//发送失败
 
 	} else {
-		int retval = mCom->mselect(1000);
+		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
-			retval = mCom->mread(mCom->RX_Buffer, MAX_NUM);
+			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
-			if (0 == retval) {
-				int length = mCom->RX_Buffer[1];
+			if (0 == retval) { //读取成功
 				PX4_INFO("ReceiveBuffer:");
 
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
+				for (int i = 0; i < RX_Buffer[1]; i++) {
+					printf(" 0x%02x ", RX_Buffer[i]);
 				}
 
-				if (0x00 == mCom->RX_Buffer[3]) {
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
+				if (0x00 == RX_Buffer[3]) {
+					for (int i = 0; i < RX_Buffer[1]; i++) {
+						Buffer[i] = RX_Buffer[i];
 					}
 
 					return 0;
 
-				} else if (0x01 == mCom->RX_Buffer[3]) {
+				} else if (0x01 == RX_Buffer[3]) {
 					return -2;
 
-				} else if (0x02 == mCom->RX_Buffer[3]) {
+				} else if (0x02 == RX_Buffer[3]) {
 					return -3;
 
-				} else if (0x03 == mCom->RX_Buffer[3]) {
+				} else if (0x03 == RX_Buffer[3]) {
 					return -4;
 
-				} else if (0x04 == mCom->RX_Buffer[3]) {
+				} else if (0x04 == RX_Buffer[3]) {
 					return -5;
 				}
 
 				PX4_INFO("\n");
+
 			}
 
 		} else if (0 == retval) {
+			PX4_INFO("Answer timeout.No data");
 			return -6;
 
 		} else if (-1 == retval) {
+			PX4_INFO("Failed to set time of mselect");
 			return -7;
 		}
+
 	}
 
 	return NULL;
@@ -2083,7 +1968,7 @@ int Gimbal_HeadingFollowTF_GimbalLock(unsigned char *Buffer) //设置云台航�
 /********************************************************************************************************
 【函数名】Gimbal_Lock_Mode
 【功  能】云台锁定模式
-【参  数】Buffer:存取返回报文
+【参  数】Buffer
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -2093,72 +1978,73 @@ int Gimbal_HeadingFollowTF_GimbalLock(unsigned char *Buffer) //设置云台航�
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Gimbal_Lock_Mode(unsigned char *Buffer) //云台锁定模式
+int UART::Gimbal_Lock_Mode(unsigned char *Buffer)
 {
-	UART *mCom = new UART(SerialPort4);
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa;
-	mCom->TX_Buffer[1] = 0x06;
-	mCom->TX_Buffer[2] = 0x05;
-	mCom->TX_Buffer[3] = 0x01;
-	mCom->TX_Buffer[4] = 0x03;
-	mCom->TX_Buffer[5] = mCom->CRC();
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, ReadLen, ReadTimeOut);
+	memset(TX_Buffer, 0, sizeof(TX_Buffer));//发送数组设置为0
+	TX_Buffer[0] = 0xaa; //帧头
+	TX_Buffer[1] = 0x06; //总字节数
+	TX_Buffer[2] = 0x05; //命令字
+	TX_Buffer[3] = 0x01; //执行命令参数
+	TX_Buffer[4] = 0x03;
+	TX_Buffer[5] = CRC();
 
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
-		return  -1;
+	if (-1 == mwrite(TX_Buffer, TX_Buffer[1])) {
+		return -1;//发送失败
 
 	} else {
-		int retval = mCom->mselect(1000);
+		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
-			retval = mCom->mread(mCom->RX_Buffer, MAX_NUM);
+			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
-			if (0 == retval) {
-				int length = mCom->RX_Buffer[1];
+			if (0 == retval) { //读取成功
 				PX4_INFO("ReceiveBuffer:");
 
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
+				for (int i = 0; i < RX_Buffer[1]; i++) {
+					printf(" 0x%02x ", RX_Buffer[i]);
 				}
 
-				if (0x00 == mCom->RX_Buffer[3]) {
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
+				if (0x00 == RX_Buffer[3]) {
+					for (int i = 0; i < RX_Buffer[1]; i++) {
+						Buffer[i] = RX_Buffer[i];
 					}
 
 					return 0;
 
-				} else if (0x01 == mCom->RX_Buffer[3]) {
+				} else if (0x01 == RX_Buffer[3]) {
 					return -2;
 
-				} else if (0x02 == mCom->RX_Buffer[3]) {
+				} else if (0x02 == RX_Buffer[3]) {
 					return -3;
 
-				} else if (0x03 == mCom->RX_Buffer[3]) {
+				} else if (0x03 == RX_Buffer[3]) {
 					return -4;
 
-				} else if (0x04 == mCom->RX_Buffer[3]) {
+				} else if (0x04 == RX_Buffer[3]) {
 					return -5;
 				}
 
 				PX4_INFO("\n");
+
 			}
 
 		} else if (0 == retval) {
+			PX4_INFO("Answer timeout.No data");
 			return -6;
 
 		} else if (-1 == retval) {
+			PX4_INFO("Failed to set time of mselect");
 			return -7;
 		}
+
 	}
 
 	return NULL;
 }
 /********************************************************************************************************
 【函数名】Pantai_Order_Back_In
-【功  能】云台命令-回中
-【参  数】Buffer:存取返回报文
+【功  能】云台回中模式
+【参  数】Buffer
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -2168,66 +2054,64 @@ int Gimbal_Lock_Mode(unsigned char *Buffer) //云台锁定模式
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Pantai_Order_Back_In(uint8_t *Buffer)
+int UART::Pantai_Order_Back_In(unsigned char *Buffer)
 {
-	UART *mCom = new UART(SerialPort4);
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa; //帧头
-	mCom->TX_Buffer[1] = 0x05; //总字节数
-	mCom->TX_Buffer[2] = 0x05; //命令字
-	mCom->TX_Buffer[3] = 0x02; //执行命令参数
-	mCom->TX_Buffer[4] = mCom->CRC(); //校验码
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, MAX_NUM, ReadTimeOut);
+	memset(TX_Buffer, 0, sizeof(TX_Buffer));//发送数组设置为0
+	TX_Buffer[0] = 0xaa; //帧头
+	TX_Buffer[1] = 0x05; //总字节数
+	TX_Buffer[2] = 0x05; //命令字
+	TX_Buffer[3] = 0x02; //执行命令参数
+	TX_Buffer[4] = CRC();
 
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
-		return -1;        //向云台发送获取相机版本失败
+	if (-1 == mwrite(TX_Buffer, TX_Buffer[1])) {
+		return -1;//发送失败
 
 	} else {
-		int retval = mCom->mselect(1000);//阻塞模式等待1s
+		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
-			//则表示有消息返回
-			retval = mCom->mread(mCom->RX_Buffer, MAX_NUM);
+			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
-			if (0 == retval) {
-				int length = mCom->RX_Buffer[1];
+			if (0 == retval) { //读取成功
 				PX4_INFO("ReceiveBuffer:");
 
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
-
+				for (int i = 0; i < RX_Buffer[1]; i++) {
+					printf(" 0x%02x ", RX_Buffer[i]);
 				}
 
-				if (0x00 == mCom->RX_Buffer[3]) {
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
+				if (0x00 == RX_Buffer[3]) {
+					for (int i = 0; i < RX_Buffer[1]; i++) {
+						Buffer[i] = RX_Buffer[i];
 					}
 
-					mCom->~UART();
-					return OK;
+					return 0;
 
-				} else if (0x01 == mCom->RX_Buffer[3]) {
+				} else if (0x01 == RX_Buffer[3]) {
 					return -2;
 
-				} else if (0x02 == mCom->RX_Buffer[3]) {
+				} else if (0x02 == RX_Buffer[3]) {
 					return -3;
 
-				} else if (0x03 == mCom->RX_Buffer[3]) {
+				} else if (0x03 == RX_Buffer[3]) {
 					return -4;
 
-				} else if (0x04 == mCom->RX_Buffer[3]) {
+				} else if (0x04 == RX_Buffer[3]) {
 					return -5;
 				}
 
 				PX4_INFO("\n");
+
 			}
 
-		} else if (0 == retval) { //等待应答超时则表明没有数据传输
+		} else if (0 == retval) {
+			PX4_INFO("Answer timeout.No data");
 			return -6;
 
 		} else if (-1 == retval) {
-			return -7;//执行select等待数据设置失败
+			PX4_INFO("Failed to set time of mselect");
+			return -7;
 		}
+
 	}
 
 	return NULL;
@@ -2235,7 +2119,7 @@ int Pantai_Order_Back_In(uint8_t *Buffer)
 /********************************************************************************************************
 【函数名】Gimbal_Flip
 【功  能】云台命令-翻转
-【参  数】Buffer:存取返回报文
+【参  数】Buffer
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -2245,66 +2129,64 @@ int Pantai_Order_Back_In(uint8_t *Buffer)
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Gimbal_Flip(unsigned char *Buffer) //云台命令-翻转
+int UART::Gimbal_Flip(unsigned char *Buffer)
 {
-	UART *mCom = new UART(SerialPort4);
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa; //帧头
-	mCom->TX_Buffer[1] = 0x05; //总字节数
-	mCom->TX_Buffer[2] = 0x05; //命令字
-	mCom->TX_Buffer[3] = 0x03; //执行命令参数
-	mCom->TX_Buffer[4] = mCom->CRC(); //校验码
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, MAX_NUM, ReadTimeOut);
+	memset(TX_Buffer, 0, sizeof(TX_Buffer));//发送数组设置为0
+	TX_Buffer[0] = 0xaa; //帧头
+	TX_Buffer[1] = 0x05; //总字节数
+	TX_Buffer[2] = 0x05; //命令字
+	TX_Buffer[3] = 0x03; //执行命令参数
+	TX_Buffer[4] = CRC();
 
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
-		return -1;        //向云台发送获取相机版本失败
+	if (-1 == mwrite(TX_Buffer, TX_Buffer[1])) {
+		return -1;//发送失败
 
 	} else {
-		int retval = mCom->mselect(1000);//阻塞模式等待1s
+		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
-			//则表示有消息返回
-			retval = mCom->mread(mCom->RX_Buffer, MAX_NUM);
+			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
-			if (0 == retval) {
-				int length = mCom->RX_Buffer[1];
+			if (0 == retval) { //读取成功
 				PX4_INFO("ReceiveBuffer:");
 
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
-
+				for (int i = 0; i < RX_Buffer[1]; i++) {
+					printf(" 0x%02x ", RX_Buffer[i]);
 				}
 
-				if (0x00 == mCom->RX_Buffer[3]) {
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
+				if (0x00 == RX_Buffer[3]) {
+					for (int i = 0; i < RX_Buffer[1]; i++) {
+						Buffer[i] = RX_Buffer[i];
 					}
 
-					mCom->~UART();
-					return OK;
+					return 0;
 
-				} else if (0x01 == mCom->RX_Buffer[3]) {
+				} else if (0x01 == RX_Buffer[3]) {
 					return -2;
 
-				} else if (0x02 == mCom->RX_Buffer[3]) {
+				} else if (0x02 == RX_Buffer[3]) {
 					return -3;
 
-				} else if (0x03 == mCom->RX_Buffer[3]) {
+				} else if (0x03 == RX_Buffer[3]) {
 					return -4;
 
-				} else if (0x04 == mCom->RX_Buffer[3]) {
+				} else if (0x04 == RX_Buffer[3]) {
 					return -5;
 				}
 
 				PX4_INFO("\n");
+
 			}
 
-		} else if (0 == retval) { //等待应答超时则表明没有数据传输
+		} else if (0 == retval) {
+			PX4_INFO("Answer timeout.No data");
 			return -6;
 
 		} else if (-1 == retval) {
-			return -7;//执行select等待数据设置失败
+			PX4_INFO("Failed to set time of mselect");
+			return -7;
 		}
+
 	}
 
 	return NULL;
@@ -2312,7 +2194,7 @@ int Gimbal_Flip(unsigned char *Buffer) //云台命令-翻转
 /********************************************************************************************************
 【函数名】Gimbal_Calibration
 【功  能】云台命令-校准
-【参  数】Buffer:存取返回报文
+【参  数】Buffer
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -2322,66 +2204,64 @@ int Gimbal_Flip(unsigned char *Buffer) //云台命令-翻转
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Gimbal_Calibration(unsigned char *Buffer) //云台命令-校准
+int UART::Gimbal_Calibration(unsigned char *Buffer)
 {
-	UART *mCom = new UART(SerialPort4);
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa; //帧头
-	mCom->TX_Buffer[1] = 0x05; //总字节数
-	mCom->TX_Buffer[2] = 0x05; //命令字
-	mCom->TX_Buffer[3] = 0x07; //执行命令参数
-	mCom->TX_Buffer[4] = mCom->CRC(); //校验码
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, MAX_NUM, ReadTimeOut);
+	memset(TX_Buffer, 0, sizeof(TX_Buffer));//发送数组设置为0
+	TX_Buffer[0] = 0xaa; //帧头
+	TX_Buffer[1] = 0x05; //总字节数
+	TX_Buffer[2] = 0x05; //命令字
+	TX_Buffer[3] = 0x07; //执行命令参数
+	TX_Buffer[4] = CRC();
 
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
-		return -1;        //向云台发送获取相机版本失败
+	if (-1 == mwrite(TX_Buffer, TX_Buffer[1])) {
+		return -1;//发送失败
 
 	} else {
-		int retval = mCom->mselect(1000);//阻塞模式等待1s
+		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
-			//则表示有消息返回
-			retval = mCom->mread(mCom->RX_Buffer, MAX_NUM);
+			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
-			if (0 == retval) {
-				int length = mCom->RX_Buffer[1];
+			if (0 == retval) { //读取成功
 				PX4_INFO("ReceiveBuffer:");
 
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
-
+				for (int i = 0; i < RX_Buffer[1]; i++) {
+					printf(" 0x%02x ", RX_Buffer[i]);
 				}
 
-				if (0x00 == mCom->RX_Buffer[3]) {
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
+				if (0x00 == RX_Buffer[3]) {
+					for (int i = 0; i < RX_Buffer[1]; i++) {
+						Buffer[i] = RX_Buffer[i];
 					}
 
-					mCom->~UART();
-					return OK;
+					return 0;
 
-				} else if (0x01 == mCom->RX_Buffer[3]) {
+				} else if (0x01 == RX_Buffer[3]) {
 					return -2;
 
-				} else if (0x02 == mCom->RX_Buffer[3]) {
+				} else if (0x02 == RX_Buffer[3]) {
 					return -3;
 
-				} else if (0x03 == mCom->RX_Buffer[3]) {
+				} else if (0x03 == RX_Buffer[3]) {
 					return -4;
 
-				} else if (0x04 == mCom->RX_Buffer[3]) {
+				} else if (0x04 == RX_Buffer[3]) {
 					return -5;
 				}
 
 				PX4_INFO("\n");
+
 			}
 
-		} else if (0 == retval) { //等待应答超时则表明没有数据传输
+		} else if (0 == retval) {
+			PX4_INFO("Answer timeout.No data");
 			return -6;
 
 		} else if (-1 == retval) {
-			return -7;//执行select等待数据设置失败
+			PX4_INFO("Failed to set time of mselect");
+			return -7;
 		}
+
 	}
 
 	return NULL;
@@ -2389,7 +2269,7 @@ int Gimbal_Calibration(unsigned char *Buffer) //云台命令-校准
 /********************************************************************************************************
 【函数名】Gimabl_Sensitivity_Mode0_Default
 【功  能】云台灵敏度模式0-默认(云台默认)
-【参  数】Buffer:存取返回报文
+【参  数】Buffer
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -2399,64 +2279,65 @@ int Gimbal_Calibration(unsigned char *Buffer) //云台命令-校准
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Gimabl_Sensitivity_Mode0_Default(unsigned char *Buffer) //云台灵敏度模式0-默认(云台默认)
+int UART::Gimabl_Sensitivity_Mode0_Default(unsigned char *Buffer)
 {
-	UART *mCom = new UART(SerialPort4);
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa;
-	mCom->TX_Buffer[1] = 0x06;
-	mCom->TX_Buffer[2] = 0x05;
-	mCom->TX_Buffer[3] = 0x04;
-	mCom->TX_Buffer[4] = 0x00;
-	mCom->TX_Buffer[5] = mCom->CRC();
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, ReadLen, ReadTimeOut);
+	memset(TX_Buffer, 0, sizeof(TX_Buffer));//发送数组设置为0
+	TX_Buffer[0] = 0xaa; //帧头
+	TX_Buffer[1] = 0x06; //总字节数
+	TX_Buffer[2] = 0x05; //命令字
+	TX_Buffer[3] = 0x04; //执行命令参数
+	TX_Buffer[4] = 0x00;
+	TX_Buffer[5] = CRC();
 
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
-		return  -1;
+	if (-1 == mwrite(TX_Buffer, TX_Buffer[1])) {
+		return -1;//发送失败
 
 	} else {
-		int retval = mCom->mselect(1000);
+		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
-			retval = mCom->mread(mCom->RX_Buffer, MAX_NUM);
+			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
-			if (0 == retval) {
-				int length = mCom->RX_Buffer[1];
+			if (0 == retval) { //读取成功
 				PX4_INFO("ReceiveBuffer:");
 
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
+				for (int i = 0; i < RX_Buffer[1]; i++) {
+					printf(" 0x%02x ", RX_Buffer[i]);
 				}
 
-				if (0x00 == mCom->RX_Buffer[3]) {
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
+				if (0x00 == RX_Buffer[3]) {
+					for (int i = 0; i < RX_Buffer[1]; i++) {
+						Buffer[i] = RX_Buffer[i];
 					}
 
 					return 0;
 
-				} else if (0x01 == mCom->RX_Buffer[3]) {
+				} else if (0x01 == RX_Buffer[3]) {
 					return -2;
 
-				} else if (0x02 == mCom->RX_Buffer[3]) {
+				} else if (0x02 == RX_Buffer[3]) {
 					return -3;
 
-				} else if (0x03 == mCom->RX_Buffer[3]) {
+				} else if (0x03 == RX_Buffer[3]) {
 					return -4;
 
-				} else if (0x04 == mCom->RX_Buffer[3]) {
+				} else if (0x04 == RX_Buffer[3]) {
 					return -5;
 				}
 
 				PX4_INFO("\n");
+
 			}
 
 		} else if (0 == retval) {
+			PX4_INFO("Answer timeout.No data");
 			return -6;
 
 		} else if (-1 == retval) {
+			PX4_INFO("Failed to set time of mselect");
 			return -7;
 		}
+
 	}
 
 	return NULL;
@@ -2464,7 +2345,7 @@ int Gimabl_Sensitivity_Mode0_Default(unsigned char *Buffer) //云台灵敏度模
 /********************************************************************************************************
 【函数名】Gimbal_Sensitivity_Mode1_Motion
 【功  能】云台灵敏度模式1-运动
-【参  数】Buffer:存取返回报文
+【参  数】Buffer
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -2474,72 +2355,73 @@ int Gimabl_Sensitivity_Mode0_Default(unsigned char *Buffer) //云台灵敏度模
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Gimbal_Sensitivity_Mode1_Motion(unsigned char *Buffer)//云台灵敏度模式1-运动
+int UART::Gimbal_Sensitivity_Mode1_Motion(unsigned char *Buffer)
 {
-	UART *mCom = new UART(SerialPort4);
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa;
-	mCom->TX_Buffer[1] = 0x06;
-	mCom->TX_Buffer[2] = 0x05;
-	mCom->TX_Buffer[3] = 0x04;
-	mCom->TX_Buffer[4] = 0x01;
-	mCom->TX_Buffer[5] = mCom->CRC();
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, ReadLen, ReadTimeOut);
+	memset(TX_Buffer, 0, sizeof(TX_Buffer));//发送数组设置为0
+	TX_Buffer[0] = 0xaa; //帧头
+	TX_Buffer[1] = 0x06; //总字节数
+	TX_Buffer[2] = 0x05; //命令字
+	TX_Buffer[3] = 0x04; //执行命令参数
+	TX_Buffer[4] = 0x01;
+	TX_Buffer[5] = CRC();
 
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
-		return  -1;
+	if (-1 == mwrite(TX_Buffer, TX_Buffer[1])) {
+		return -1;//发送失败
 
 	} else {
-		int retval = mCom->mselect(1000);
+		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
-			retval = mCom->mread(mCom->RX_Buffer, MAX_NUM);
+			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
-			if (0 == retval) {
-				int length = mCom->RX_Buffer[1];
+			if (0 == retval) { //读取成功
 				PX4_INFO("ReceiveBuffer:");
 
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
+				for (int i = 0; i < RX_Buffer[1]; i++) {
+					printf(" 0x%02x ", RX_Buffer[i]);
 				}
 
-				if (0x00 == mCom->RX_Buffer[3]) {
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
+				if (0x00 == RX_Buffer[3]) {
+					for (int i = 0; i < RX_Buffer[1]; i++) {
+						Buffer[i] = RX_Buffer[i];
 					}
 
 					return 0;
 
-				} else if (0x01 == mCom->RX_Buffer[3]) {
+				} else if (0x01 == RX_Buffer[3]) {
 					return -2;
 
-				} else if (0x02 == mCom->RX_Buffer[3]) {
+				} else if (0x02 == RX_Buffer[3]) {
 					return -3;
 
-				} else if (0x03 == mCom->RX_Buffer[3]) {
+				} else if (0x03 == RX_Buffer[3]) {
 					return -4;
 
-				} else if (0x04 == mCom->RX_Buffer[3]) {
+				} else if (0x04 == RX_Buffer[3]) {
 					return -5;
 				}
 
 				PX4_INFO("\n");
+
 			}
 
 		} else if (0 == retval) {
+			PX4_INFO("Answer timeout.No data");
 			return -6;
 
 		} else if (-1 == retval) {
+			PX4_INFO("Failed to set time of mselect");
 			return -7;
 		}
+
 	}
 
 	return NULL;
 }
 /********************************************************************************************************
 【函数名】Gimbal_Analog_Joystick_Operation
-【功  能】云台模拟摇杆操作
-【参  数】Buffer:存取返回报文
+【功  能】云台模拟摇杆控制
+【参  数】Buffer
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -2549,69 +2431,70 @@ int Gimbal_Sensitivity_Mode1_Motion(unsigned char *Buffer)//云台灵敏度模�
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Gimbal_Analog_Joystick_Operation(unsigned char *Buffer,
-				     unsigned char Course_MSB, unsigned char Course_LSB,
-				     unsigned char Pitch_MSB, unsigned char Pitch_LSB) //云台模拟摇杆操作
+int UART::Gimbal_Analog_Joystick_Operation(unsigned char *Buffer,
+		unsigned char Course_MSB, unsigned char Course_LSB,
+		unsigned char Pitch_MSB, unsigned char Pitch_LSB)
 {
-	UART *mCom = new UART(SerialPort4);
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa;
-	mCom->TX_Buffer[1] = 0x09;
-	mCom->TX_Buffer[2] = 0x05;
-	mCom->TX_Buffer[3] = 0x06;
-	mCom->TX_Buffer[4] = Course_MSB;
-	mCom->TX_Buffer[5] = Course_LSB;
-	mCom->TX_Buffer[6] = Pitch_MSB;
-	mCom->TX_Buffer[7] = Pitch_LSB;
-	mCom->TX_Buffer[8] = mCom->CRC();
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, ReadLen, ReadTimeOut);
+	memset(TX_Buffer, 0, sizeof(TX_Buffer));//发送数组设置为0
+	TX_Buffer[0] = 0xaa;
+	TX_Buffer[1] = 0x09;
+	TX_Buffer[2] = 0x05;
+	TX_Buffer[3] = 0x06;
+	TX_Buffer[4] = Course_MSB;
+	TX_Buffer[5] = Course_LSB;
+	TX_Buffer[6] = Pitch_MSB;
+	TX_Buffer[7] = Pitch_LSB;
+	TX_Buffer[8] = CRC();
 
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
-		return  -1;
+	if (-1 == mwrite(TX_Buffer, TX_Buffer[1])) {
+		return -1;//发送失败
 
 	} else {
-		int retval = mCom->mselect(1000);
+		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
-			retval = mCom->mread(mCom->RX_Buffer, MAX_NUM);
+			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
-			if (0 == retval) {
-				int length = mCom->RX_Buffer[1];
+			if (0 == retval) { //读取成功
 				PX4_INFO("ReceiveBuffer:");
 
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
+				for (int i = 0; i < RX_Buffer[1]; i++) {
+					printf(" 0x%02x ", RX_Buffer[i]);
 				}
 
-				if (0x00 == mCom->RX_Buffer[3]) {
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
+				if (0x00 == RX_Buffer[3]) {
+					for (int i = 0; i < RX_Buffer[1]; i++) {
+						Buffer[i] = RX_Buffer[i];
 					}
 
 					return 0;
 
-				} else if (0x01 == mCom->RX_Buffer[3]) {
+				} else if (0x01 == RX_Buffer[3]) {
 					return -2;
 
-				} else if (0x02 == mCom->RX_Buffer[3]) {
+				} else if (0x02 == RX_Buffer[3]) {
 					return -3;
 
-				} else if (0x03 == mCom->RX_Buffer[3]) {
+				} else if (0x03 == RX_Buffer[3]) {
 					return -4;
 
-				} else if (0x04 == mCom->RX_Buffer[3]) {
+				} else if (0x04 == RX_Buffer[3]) {
 					return -5;
 				}
 
 				PX4_INFO("\n");
+
 			}
 
 		} else if (0 == retval) {
+			PX4_INFO("Answer timeout.No data");
 			return -6;
 
 		} else if (-1 == retval) {
+			PX4_INFO("Failed to set time of mselect");
 			return -7;
 		}
+
 	}
 
 	return NULL;
@@ -2619,7 +2502,7 @@ int Gimbal_Analog_Joystick_Operation(unsigned char *Buffer,
 /********************************************************************************************************
 【函数名】Gimbal_Absolute_Angle_Control
 【功  能】云台绝对角度控制
-【参  数】Buffer:存取返回报文
+【参  数】Buffer
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
        -2：没有0xaa头字节
@@ -2629,112 +2512,82 @@ int Gimbal_Analog_Joystick_Operation(unsigned char *Buffer,
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Gimbal_Absolute_Angle_Control(unsigned char *Buffer,
-				  unsigned char Course_MSB, unsigned char Course_LSB,
-				  unsigned char Roll_MSB, unsigned char Roll_LSB,
-				  unsigned char Pitch_MSB, unsigned char Pitch_LSB,
-				  unsigned char Speed_Control)  //云台绝对角度控制
+int UART::Gimbal_Absolute_Angle_Control(unsigned char *Buffer,
+					unsigned char Course_MSB, unsigned char Course_LSB,
+					unsigned char Roll_MSB, unsigned char Roll_LSB,
+					unsigned char Pitch_MSB, unsigned char Pitch_LSB,
+					unsigned char Speed_Control)
 {
+	memset(TX_Buffer, 0, sizeof(TX_Buffer));//发送数组设置为0
+	TX_Buffer[0] = 0xaa;
+	TX_Buffer[1] = 0x0c;
+	TX_Buffer[2] = 0x05;
+	TX_Buffer[3] = 0x05;
+	TX_Buffer[4] = Course_MSB;
+	TX_Buffer[5] = Course_LSB;
+	TX_Buffer[6] = Roll_MSB;
+	TX_Buffer[7] = Roll_LSB;
+	TX_Buffer[8] = Pitch_MSB;
+	TX_Buffer[9] = Pitch_LSB;
+	TX_Buffer[10] = Speed_Control;
+	TX_Buffer[11] = CRC();
 
-	UART *mCom = new UART(SerialPort4);
-	memset(mCom->TX_Buffer, 0, MAX_NUM);
-	mCom->TX_Buffer[0] = 0xaa;
-	mCom->TX_Buffer[1] = 0x0c;
-	mCom->TX_Buffer[2] = 0x05;
-	mCom->TX_Buffer[3] = 0x05;
-	mCom->TX_Buffer[4] = Course_MSB;
-	mCom->TX_Buffer[5] = Course_LSB;
-	mCom->TX_Buffer[6] = Roll_MSB;
-	mCom->TX_Buffer[7] = Roll_LSB;
-	mCom->TX_Buffer[8] = Pitch_MSB;
-	mCom->TX_Buffer[9] = Pitch_LSB;
-	mCom->TX_Buffer[10] = Speed_Control;
-	mCom->TX_Buffer[11] = mCom->CRC();
-	mCom->cfg(Baudrate, DataBits, CheckBits, StopBits, ReadLen, ReadTimeOut);
-
-
-	if (-1 == mCom->mwrite(mCom->TX_Buffer, mCom->TX_Buffer[1])) {
-		return  -1;
+	if (-1 == mwrite(TX_Buffer, TX_Buffer[1])) {
+		return -1;//发送失败
 
 	} else {
-		int retval = mCom->mselect(1000);
+		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
-			retval = mCom->mread(mCom->RX_Buffer, MAX_NUM);
+			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
-			if (0 == retval) {
-				int length = mCom->RX_Buffer[1];
+			if (0 == retval) { //读取成功
 				PX4_INFO("ReceiveBuffer:");
 
-				for (int i = 0; i < length; i++) {
-					printf(" 0x%x ", mCom->RX_Buffer[i]);
+				for (int i = 0; i < RX_Buffer[1]; i++) {
+					printf(" 0x%02x ", RX_Buffer[i]);
 				}
 
-				if (0x00 == mCom->RX_Buffer[3]) {
-					for (int i = 0; i < length; i++) {
-						Buffer[i] = mCom->RX_Buffer[i];
+				if (0x00 == RX_Buffer[3]) {
+					for (int i = 0; i < RX_Buffer[1]; i++) {
+						Buffer[i] = RX_Buffer[i];
 					}
 
 					return 0;
 
-				} else if (0x01 == mCom->RX_Buffer[3]) {
+				} else if (0x01 == RX_Buffer[3]) {
 					return -2;
 
-				} else if (0x02 == mCom->RX_Buffer[3]) {
+				} else if (0x02 == RX_Buffer[3]) {
 					return -3;
 
-				} else if (0x03 == mCom->RX_Buffer[3]) {
+				} else if (0x03 == RX_Buffer[3]) {
 					return -4;
 
-				} else if (0x04 == mCom->RX_Buffer[3]) {
+				} else if (0x04 == RX_Buffer[3]) {
 					return -5;
 				}
 
 				PX4_INFO("\n");
+
 			}
 
 		} else if (0 == retval) {
+			PX4_INFO("Answer timeout.No data");
 			return -6;
 
 		} else if (-1 == retval) {
+			PX4_INFO("Failed to set time of mselect");
 			return -7;
 		}
+
 	}
 
 	return NULL;
 }
 /********************************************************************************************************
-【函数名】uart_test_main
-【功  能】线程运行函数
-【参  数】None
-【返回值】None
-********************************************************************************************************/
-/********************************************************************************************************
-【函数名】Gimbal_Absolute_Angle_Control_DEC
-【功  能】云台绝对角度控制
-【参  数】Buffer:存取返回报文;Course_Angle:设定航向角度;Roll_Angle:设定横滚角度;Pitch_Angle:设定俯仰角度;SpeedControl:设定转向速度
-【返回值】0：写入成功并获得正确返回报文
-       -1：写入失败
-       -2：没有0xaa头字节
-       -3：没有接收到正确的命令
-       -4：输入参数不等于计算总字节数
-       -5：校验出来的结果与校验位不相等，校验错误
-       -6：应答超时，没有数据
-       -7：设置等待时间失败
-********************************************************************************************************/
-int Gimbal_Absolute_Angle_Control_DEC(unsigned char *Buffer,
-				      float Course_Angle, float Roll_Angle, float Pitch_Angle, int SpeedControl)//云台绝对角度控制
-{
-	FloatToChar Course, Roll, Pitch;
-	Course.Int = Course_Angle * 10;
-	Roll.Int = Roll_Angle * 10;
-	Pitch.Int = Pitch_Angle * 10;
-	return Gimbal_Absolute_Angle_Control(Buffer, Course.Byte[1], Course.Byte[0], Roll.Byte[1], Roll.Byte[0], Pitch.Byte[1],
-					     Pitch.Byte[0], SpeedControl);
-}
-/********************************************************************************************************
 【函数名】Gimbal_Analog_Joystick_Operation_DEC
-【功  能】云台绝对角度控制
+【功  能】云台模拟摇杆控制-直接输入十进制
 【参  数】Buffer:存取返回报文;Course_Angle:设定航向速度;Pitch_Angle:设定俯仰速度
 【返回值】0：写入成功并获得正确返回报文
        -1：写入失败
@@ -2745,48 +2598,57 @@ int Gimbal_Absolute_Angle_Control_DEC(unsigned char *Buffer,
        -6：应答超时，没有数据
        -7：设置等待时间失败
 ********************************************************************************************************/
-int Gimbal_Analog_Joystick_Operation_DEC(unsigned char *Buffer, int Course_Speed, int Pitch_Speed)
+int UART::Gimbal_Analog_Joystick_Operation_DEC(unsigned char *Buffer, int Course_Speed,
+		int Pitch_Speed)//云台模拟摇杆控制-直接输入十进制无需转换
 {
 	FloatToChar Course, Pitch;
 	Course.Int = Course_Speed;
 	Pitch.Int = Pitch_Speed;
 	return Gimbal_Analog_Joystick_Operation(Buffer, Course.Byte[1], Course.Byte[0], Pitch.Byte[1], Pitch.Byte[0]);
+
 }
+/********************************************************************************************************
+【函数名】Gimbal_Absolute_Angle_Control_DEC
+【功  能】云台绝对角度控制-直接输入十进制
+【参  数】Buffer:存取返回报文;Course_Angle:设定航向角度;Roll_Angle:设定横滚角度;Pitch_Angle:设定俯仰角度;SpeedControl:设定转向速度
+【返回值】0：写入成功并获得正确返回报文
+       -1：写入失败
+       -2：没有0xaa头字节
+       -3：没有接收到正确的命令
+       -4：输入参数不等于计算总字节数
+       -5：校验出来的结果与校验位不相等，校验错误
+       -6：应答超时，没有数据
+       -7：设置等待时间失败
+********************************************************************************************************/
+int UART::Gimbal_Absolute_Angle_Control_DEC(unsigned char *Buffer,
+		float Course_Angle, float Roll_Angle, float Pitch_Angle,
+		int SpeedControl)//绝对角度控制-直接输入十进制无需转换
+{
+	FloatToChar Course, Roll, Pitch;
+	Course.Int = Course_Angle * 10;
+	Roll.Int = Roll_Angle * 10;
+	Pitch.Int = Pitch_Angle * 10;
+	return Gimbal_Absolute_Angle_Control(Buffer, Course.Byte[1], Course.Byte[0], Roll.Byte[1], Roll.Byte[0], Pitch.Byte[1],
+					     Pitch.Byte[0], SpeedControl);
+}
+/********************************************************************************************************
+【函数名】uart_main
+【功  能】线程执行主函数
+【参  数】None
+【返回值】校验码
+********************************************************************************************************/
 int uart_main(int argc, char *argv[])
 {
-	uint8_t Buffer[256];
-	printf("id:%d\n",  pthread_self());
-	Gimbal_Analog_Joystick_Operation_DEC(Buffer, 10, 0);
-
-	switch (Gimbal_Absolute_Angle_Control_DEC(Buffer, 0, 40, 90, 0)) {
-	case 0: {
-			PX4_INFO("成功写入数据并获得正确应答消息\n");
-
-			for (int i = 0; i < Buffer[1]; i++) {
-				printf(" 0x%x ", Buffer[i]);
-			}
-
-			printf("\n");
-		}; break;
-
-	case -1: PX4_INFO("写入失败\n"); break;
-
-	case -2: PX4_INFO("没有0xaa头字节\n"); break;
-
-	case -3: PX4_INFO("没有接收到正确的命令\n"); break;
-
-	case -4: PX4_INFO("输入参数不等于计算总字节数\n"); break;
-
-	case -5: PX4_INFO("校验出来的结果与校验位不相等，校验错误\n"); break;
-
-	case -6: PX4_INFO("应答超时，没有数据传输\n"); break;
-
-	case -7: PX4_INFO("设置等待时间失败\n"); break;
-	}
-
-
-	return 1;
+	UART *mCom = new UART(SerialPort4);
+	mCom->cfg(BaudRate, DataBits, CheckBits, StopBits, ReadLen, ReadTimeOut);
+	unsigned char Buffer[MAX_NUM];
+	int data = mCom->Get_Camera_Version(Buffer);
+	PX4_INFO("return data:%d", data);
+	int data1 = mCom->Get_Protocol_Version(Buffer);
+	PX4_INFO("return data1:%d", data1);
+	return NULL;
 }
+
 /********************************************************************************************************
 【函数名】yuntai_main
 【功  能】线程初始化函数
