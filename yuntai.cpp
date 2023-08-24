@@ -333,6 +333,7 @@ int UART::Get_Camera_Version(unsigned char *Buffer)
 		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
+			memset(RX_Buffer, 0, sizeof(RX_Buffer));
 			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
@@ -408,6 +409,7 @@ int UART::Get_Protocol_Version(unsigned char *Buffer)
 		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
+			memset(RX_Buffer, 0, sizeof(RX_Buffer));
 			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
@@ -483,6 +485,7 @@ int UART::Get_Current_Camera_Working_Mode(unsigned char *Buffer)
 		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
+			memset(RX_Buffer, 0, sizeof(RX_Buffer));
 			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
@@ -558,6 +561,7 @@ int UART::Get_Camera_Battery_Level(unsigned char *Buffer)
 		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
+			memset(RX_Buffer, 0, sizeof(RX_Buffer));
 			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
@@ -634,6 +638,7 @@ int UART::Gimbal_Working_Mode(unsigned char *Buffer)
 		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
+			memset(RX_Buffer, 0, sizeof(RX_Buffer));
 			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
@@ -710,6 +715,7 @@ int UART::Get_Genting_Posture_Information(unsigned char *Buffer)
 		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
+			memset(RX_Buffer, 0, sizeof(RX_Buffer));
 			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
@@ -785,6 +791,7 @@ int UART::Get_SD_information(unsigned char *Buffer)
 		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
+			memset(RX_Buffer, 0, sizeof(RX_Buffer));
 			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
@@ -861,6 +868,7 @@ int UART::Get_Camera_Time(unsigned char *Buffer)
 		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
+			memset(RX_Buffer, 0, sizeof(RX_Buffer));
 			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
@@ -937,6 +945,7 @@ int UART::Get_Current_Camera_Magnification(unsigned char *Buffer)
 		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
+			memset(RX_Buffer, 0, sizeof(RX_Buffer));
 			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
@@ -1013,6 +1022,7 @@ int UART::Zoom_in_Camera_Magnification(unsigned char *Buffer)
 		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
+			memset(RX_Buffer, 0, sizeof(RX_Buffer));
 			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
@@ -1089,6 +1099,7 @@ int UART::Zoom_out_Camera_Magnification(unsigned char *Buffer)
 		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
+			memset(RX_Buffer, 0, sizeof(RX_Buffer));
 			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
@@ -1164,6 +1175,7 @@ int UART::Switch_Camera_Mode(unsigned char *Buffer)
 		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
+			memset(RX_Buffer, 0, sizeof(RX_Buffer));
 			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
@@ -1239,6 +1251,7 @@ int UART::Set_Camera_To_Take_PictureOrVideo_In_Preview_Mode(unsigned char *Buffe
 		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
+			memset(RX_Buffer, 0, sizeof(RX_Buffer));
 			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
@@ -1314,6 +1327,7 @@ int UART::Switch_Camera_WiFi_ONorOFF(unsigned char *Buffer)
 		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
+			memset(RX_Buffer, 0, sizeof(RX_Buffer));
 			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
@@ -1389,6 +1403,7 @@ int UART::Set_Camera_To_Take_Quick_Photo(unsigned char *Buffer)
 		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
+			memset(RX_Buffer, 0, sizeof(RX_Buffer));
 			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
@@ -1464,6 +1479,7 @@ int UART::Set_Camera_To_Take_Quick_Video(unsigned char *Buffer)
 		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
+			memset(RX_Buffer, 0, sizeof(RX_Buffer));
 			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
@@ -1539,6 +1555,7 @@ int UART::Formate_SDCard(unsigned char *Buffer)
 		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
+			memset(RX_Buffer, 0, sizeof(RX_Buffer));
 			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
@@ -1615,6 +1632,7 @@ int UART::Set_Camera_Color_Mode(unsigned char *Buffer)
 		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
+			memset(RX_Buffer, 0, sizeof(RX_Buffer));
 			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
@@ -1691,6 +1709,7 @@ int UART::Set_Camera_BlackWhite_Mode(unsigned char *Buffer)
 		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
+			memset(RX_Buffer, 0, sizeof(RX_Buffer));
 			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
@@ -1767,6 +1786,7 @@ int UART::Set_Gimbal_Full_Follow_Mode(unsigned char *Buffer)
 		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
+			memset(RX_Buffer, 0, sizeof(RX_Buffer));
 			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
@@ -1843,6 +1863,7 @@ int UART::Gimbal_HeadingFollow_PitchLock(unsigned char *Buffer)
 		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
+			memset(RX_Buffer, 0, sizeof(RX_Buffer));
 			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
@@ -1919,6 +1940,7 @@ int UART::Gimbal_HeadingFollowTF_GimbalLock(unsigned char *Buffer)
 		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
+			memset(RX_Buffer, 0, sizeof(RX_Buffer));
 			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
@@ -1995,6 +2017,7 @@ int UART::Gimbal_Lock_Mode(unsigned char *Buffer)
 		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
+			memset(RX_Buffer, 0, sizeof(RX_Buffer));
 			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
@@ -2070,6 +2093,7 @@ int UART::Pantai_Order_Back_In(unsigned char *Buffer)
 		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
+			memset(RX_Buffer, 0, sizeof(RX_Buffer));
 			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
@@ -2145,6 +2169,7 @@ int UART::Gimbal_Flip(unsigned char *Buffer)
 		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
+			memset(RX_Buffer, 0, sizeof(RX_Buffer));
 			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
@@ -2220,6 +2245,7 @@ int UART::Gimbal_Calibration(unsigned char *Buffer)
 		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
+			memset(RX_Buffer, 0, sizeof(RX_Buffer));
 			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
@@ -2296,6 +2322,7 @@ int UART::Gimabl_Sensitivity_Mode0_Default(unsigned char *Buffer)
 		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
+			memset(RX_Buffer, 0, sizeof(RX_Buffer));
 			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
@@ -2372,6 +2399,7 @@ int UART::Gimbal_Sensitivity_Mode1_Motion(unsigned char *Buffer)
 		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
+			memset(RX_Buffer, 0, sizeof(RX_Buffer));
 			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
@@ -2453,6 +2481,7 @@ int UART::Gimbal_Analog_Joystick_Operation(unsigned char *Buffer,
 		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
+			memset(RX_Buffer, 0, sizeof(RX_Buffer));
 			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
@@ -2539,6 +2568,7 @@ int UART::Gimbal_Absolute_Angle_Control(unsigned char *Buffer,
 		int retval = mselect(SelectTime);//设置阻塞时间
 
 		if (retval > 0) {
+			memset(RX_Buffer, 0, sizeof(RX_Buffer));
 			retval = mread(RX_Buffer, sizeof(RX_Buffer));//读取标志
 
 			if (0 == retval) { //读取成功
@@ -2632,6 +2662,43 @@ int UART::Gimbal_Absolute_Angle_Control_DEC(unsigned char *Buffer,
 					     Pitch.Byte[0], SpeedControl);
 }
 /********************************************************************************************************
+【函数名】Set_Angle
+【功  能】可同时设置航向角度(通过PID控制)、横滚角度、俯仰角度
+【参  数】Buffer:存取返回报文;Course_Angle:设定航向角度;Roll_Angle:设定横滚角度;Pitch_Angle:设定俯仰角度;SpeedControl:设定转向速度
+【返回值】NULL
+********************************************************************************************************/
+int UART::Set_Angle(unsigned char *Buffer, int Course_Angle, int Roll_Angle, int Pitch_Angle, int SpeedControl)
+{
+	unsigned char Posture_Buffer[MAX_NUM] = {0};
+	Get_Genting_Posture_Information(Posture_Buffer);//获取姿态信息
+	/* 	printf("Posture_Information:");
+
+		for (int i = 0; i < Posture_Buffer[1]; i++) {
+			printf(" 0x%02x ", Posture_Buffer[i]);
+		} */
+
+	CharToInt Course;
+	FloatToChar Roll, Pitch;
+	//获取航向角度
+	Course.Byte[3] = 0x00;
+	Course.Byte[2] = 0x00;
+	Course.Byte[1] = Posture_Buffer[2];//姿态航向_MSB
+	Course.Byte[0] = Posture_Buffer[3];//姿态航向_LSB
+	Course_error = Course_Angle - Course.Int;
+	Course_output = Kp_Course * Course_error + Ki_Course * Course_error_last;
+	Course_error_last += Course_error;
+	Course_output = _Constrain(Course_output, 55, -250);
+	Course.Int = Course_output;
+	//横滚和俯仰设置
+	Roll.Int = Roll_Angle;
+	Pitch.Int = Pitch_Angle;
+	Gimbal_Absolute_Angle_Control(Buffer, 0x00, 0x00, Roll.Byte[1], Roll.Byte[0], Pitch.Byte[1], Pitch.Byte[0],
+				      SpeedControl);
+	Gimbal_Analog_Joystick_Operation(Buffer, Course.Byte[1], Course.Byte[0], 0x00, 0x00);
+	return NULL;
+}
+
+/********************************************************************************************************
 【函数名】uart_main
 【功  能】线程执行主函数
 【参  数】None
@@ -2639,6 +2706,7 @@ int UART::Gimbal_Absolute_Angle_Control_DEC(unsigned char *Buffer,
 ********************************************************************************************************/
 int uart_main(int argc, char *argv[])
 {
+	printf("ID:%d\r\n", pthread_self());
 	UART *mCom = new UART(SerialPort4);
 	mCom->cfg(BaudRate, DataBits, CheckBits, StopBits, ReadLen, ReadTimeOut);
 	unsigned char Buffer[MAX_NUM];
@@ -2646,6 +2714,17 @@ int uart_main(int argc, char *argv[])
 	PX4_INFO("return data:%d", data);
 	int data1 = mCom->Get_Protocol_Version(Buffer);
 	PX4_INFO("return data1:%d", data1);
+	int data2 = mCom->Gimbal_HeadingFollow_PitchLock(Buffer);
+	PX4_INFO("return data2:%d", data2);
+	mCom->Set_Angle(Buffer, 90, 30, 30, 0);
+	mCom->Get_Genting_Posture_Information(Buffer);
+	printf("\n");
+	printf("Posture_Information:");
+
+	for (int i = 0; i < Buffer[1]; i++) {
+		printf(" 0x%2x ", Buffer[i]);
+	}
+
 	return NULL;
 }
 
