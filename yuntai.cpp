@@ -2755,6 +2755,9 @@ int UART::Gimbal_Absolute_Angle_Control_DEC(unsigned char *Buffer,
 		int SpeedControl)//绝对角度控制-直接输入十进制无需转换
 {
 	CharToInt Course, Roll, Pitch;
+	Course_Angle = _Constrain(Course_Angle, 175, -175);
+	Roll_Angle = _Constrain(Roll_Angle, 35, -35);
+	Pitch_Angle = _Constrain(Pitch_Angle, 85, -85);
 	Course.Int = (Course_Angle * 10);
 	Roll.Int = (Roll_Angle * 10);
 	Pitch.Int = (Pitch_Angle * 10);
@@ -2861,7 +2864,7 @@ int uart_main(int argc, char *argv[])
 	printf("ID:%d\r\n", pthread_self());
 	UART *mCom = new UART(SerialPort4, BaudRate, DataBits, CheckBits, StopBits, ReadLen, ReadTimeOut);
 	unsigned char Buffer[MAX_NUM];
-	mCom->Gimbal_Absolute_Angle_Control_DEC(Buffer, -90, 40, 90, 0);
+	mCom->Gimbal_Absolute_Angle_Control_DEC(Buffer, -180, 40, -90, 0);
 	mCom->Get_Genting_Posture_Information_DEC(Buffer);
 	return NULL;
 }
