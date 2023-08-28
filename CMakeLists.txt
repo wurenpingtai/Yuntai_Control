@@ -38,4 +38,5 @@ px4_add_module(
 		yuntai.cpp
 		yuntai.hpp
 	DEPENDS
+		px4_work_queue
 	)
